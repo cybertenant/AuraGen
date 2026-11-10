@@ -10,6 +10,7 @@ import EmploymentInformation from "@/components/EmploymentInformation";
 import FinancialInformation from "@/components/FinancialInformation";
 import DocumentUpload from "@/components/DocumentUpload";
 import ApplicationReview from "@/components/ApplicationReview";
+import HelpPanel from "@/components/HelpPanel";
 
 const SHORT_LABELS = {
   personal: "Personal",
@@ -138,6 +139,7 @@ export default function NormalForm() {
           </p>
           <h2 className="mt-1 text-xl font-semibold text-slate-900">{meta.title}</h2>
           <p className="mt-1 text-sm text-slate-600">{meta.description}</p>
+          <HelpPanel key={currentSection} sectionId={currentSection} />
         </header>
 
         {hasSectionErrors && !isReview ? (

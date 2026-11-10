@@ -5,6 +5,7 @@ import { Menu } from "lucide-react";
 import Sidebar from "@/components/Sidebar";
 import Dashboard from "@/components/Dashboard";
 import DynamicRenderer from "@/components/DynamicRenderer";
+import FrictionDashboard from "@/components/FrictionDashboard";
 import { useApplication } from "@/context/ApplicationContext";
 
 export default function AppShell() {
@@ -29,8 +30,13 @@ export default function AppShell() {
         </header>
 
         <main className="px-4 py-8 sm:px-8 lg:py-10">
-          {currentSection === "dashboard" ? <Dashboard /> : <DynamicRenderer />}
-        </main>
+          {currentSection === "dashboard" ? ( <Dashboard /> ) 
+            : currentSection === "friction" ? (
+           <FrictionDashboard />
+          ) : (
+            <DynamicRenderer />
+          )}
+          </main>
       </div>
     </div>
   );

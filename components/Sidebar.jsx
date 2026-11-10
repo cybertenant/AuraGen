@@ -9,6 +9,7 @@ import {
   Briefcase,
   User,
   Wallet,
+  Activity,
   X,
 } from "lucide-react";
 import { useApplication } from "@/context/ApplicationContext";
@@ -21,6 +22,7 @@ const NAV = [
   { id: "financial", label: "Financial Information", icon: Wallet },
   { id: "documents", label: "Document Upload", icon: FileUp },
   { id: "review", label: "Application Review", icon: ClipboardCheck },
+  { id: "friction", label: "Friction Monitor", icon: Activity },
 ];
 
 const STATUS_STYLES = {

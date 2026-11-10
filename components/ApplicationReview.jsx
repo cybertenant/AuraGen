@@ -89,6 +89,8 @@ export default function ApplicationReview({ formData, errors, onEdit, onSubmit }
         <button
           type="button"
           onClick={onSubmit}
+          data-section="review"
+          data-field="submitButton"
           className="inline-flex items-center gap-2 rounded-lg bg-blue-600 px-5 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-blue-700"
         >
           <Send className="h-4 w-4" aria-hidden="true" />

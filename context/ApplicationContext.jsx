@@ -2,6 +2,7 @@
 
 import { createContext, useCallback, useContext, useMemo, useState } from "react";
 import { FORM_SECTIONS, INITIAL_FORM_DATA } from "@/lib/fields";
+import { reportInlineError, reportInvalidSubmission } from "@/friction/frictionBus.js";
 import {
   getOverallProgress,
   validateAll,
@@ -59,7 +60,9 @@ export function ApplicationProvider({ children }) {
 
   const blurField = useCallback(
     (section, name) => {
-      setFieldError(section, name, validateField(section, name, formData));
+      const message = validateField(section, name, formData);
+      setFieldError(section, name, message);
+      if (message) reportInlineError(section, name); // metadata only: section and field IDs
     },
     [formData]
   );
@@ -68,6 +71,7 @@ export function ApplicationProvider({ children }) {
     const message = validateFile(file);
     if (message) {
       setFieldError("documents", key, message);
+      reportInlineError("documents", key);
       return;
     }
     setFormData((prev) => ({
@@ -94,6 +98,7 @@ export function ApplicationProvider({ children }) {
     const sectionErrors = validateSection(currentSection, formData);
     if (Object.keys(sectionErrors).length > 0) {
       setErrors((prev) => ({ ...prev, [currentSection]: sectionErrors }));
+      reportInvalidSubmission({ [currentSection]: Object.keys(sectionErrors) });
       return false;
     }
     const index = FORM_SECTIONS.indexOf(currentSection);
@@ -114,6 +119,10 @@ export function ApplicationProvider({ children }) {
     const firstInvalid = FORM_SECTIONS.find((id) => allErrors[id]);
     if (firstInvalid) {
       setErrors(allErrors);
+            reportInvalidSubmission({
+       ...Object.fromEntries(Object.entries(allErrors).map(([id, e]) => [id, Object.keys(e)])),
+       review: ["submitButton"],
+      });
       goToSection(firstInvalid);
       return { ok: false, firstInvalid };
     }
