@@ -1,0 +1,141 @@
+// AuraGen – Phase 3A.1 database foundation.
+// Prisma 7: the connection URL lives in prisma.config.ts, not in this file.
+
+generator client {
+  provider     = "prisma-client"
+  output       = "../src/generated/prisma"
+  moduleFormat = "cjs"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// ───────────────────────────── Enums ─────────────────────────────
+
+enum UserRole {
+  USER
+  ADMIN
+}
+
+enum AccountStatus {
+  ACTIVE
+  DISABLED
+}
+
+enum ApplicationStatus {
+  IN_PROGRESS
+  COMPLETED
+  ABANDONED
+}
+
+enum FrictionLevel {
+  LOW
+  MODERATE
+  HIGH
+}
+
+enum InteractionEventType {
+  REPEATED_CLICK
+  FIELD_FOCUS
+  FIELD_BLUR
+  HESITATION
+  VALIDATION_ERROR
+  NAVIGATION_BACKTRACK
+  HELP_REQUESTED
+  SECTION_COMPLETED
+  APPLICATION_COMPLETED
+}
+
+// ───────────────────────────── Models ─────────────────────────────
+
+model User {
+  id             String        @id(map: "users_pkey") @default(uuid()) @db.Uuid
+  externalUserId String?       @unique(map: "users_externalUserId_key")
+  role           UserRole      @default(USER)
+  accountStatus  AccountStatus @default(ACTIVE)
+  createdAt      DateTime      @default(now()) @db.Timestamptz(3)
+  updatedAt      DateTime      @updatedAt @db.Timestamptz(3)
+
+  sessions          Session[]
+  interactionEvents InteractionEvent[]
+  frictionHistory   FrictionHistory[]
+
+  @@map("users")
+}
+
+model Session {
+  id                     String            @id(map: "sessions_pkey") @default(uuid()) @db.Uuid
+  userId                 String            @db.Uuid
+  startedAt              DateTime          @default(now()) @db.Timestamptz(3)
+  lastActivityAt         DateTime          @default(now()) @db.Timestamptz(3)
+  endedAt                DateTime?         @db.Timestamptz(3)
+  currentSection         String?
+  applicationStatus      ApplicationStatus @default(IN_PROGRESS)
+  completionPercentage   Float             @default(0)
+  overallFrictionScore   Float             @default(0)
+  frictionLevel          FrictionLevel     @default(LOW)
+  totalInteractionEvents Int               @default(0)
+  createdAt              DateTime          @default(now()) @db.Timestamptz(3)
+  updatedAt              DateTime          @updatedAt @db.Timestamptz(3)
+
+  user              User               @relation(fields: [userId], references: [id], onDelete: Cascade, map: "sessions_userId_fkey")
+  interactionEvents InteractionEvent[]
+  frictionHistory   FrictionHistory[]
+
+  @@index([userId], map: "sessions_userId_idx")
+  @@index([userId, startedAt], map: "sessions_userId_startedAt_idx")
+  @@index([applicationStatus], map: "sessions_applicationStatus_idx")
+  @@map("sessions")
+}
+
+model InteractionEvent {
+  id            String               @id(map: "interaction_events_pkey") @default(uuid()) @db.Uuid
+  /// Client-generated identifier; unique so retried batches are idempotent.
+  eventId       String               @unique(map: "interaction_events_eventId_key")
+  sessionId     String               @db.Uuid
+  userId        String               @db.Uuid
+  sectionId     String
+  fieldId       String?
+  eventType     InteractionEventType
+  eventMetadata Json                 @default("{}")
+  /// When the event happened on the client.
+  timestamp     DateTime             @db.Timestamptz(3)
+  /// When the row was written on the server.
+  createdAt     DateTime             @default(now()) @db.Timestamptz(3)
+
+  session Session @relation(fields: [sessionId], references: [id], onDelete: Cascade, map: "interaction_events_sessionId_fkey")
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade, map: "interaction_events_userId_fkey")
+
+  @@index([sessionId], map: "interaction_events_sessionId_idx")
+  @@index([userId], map: "interaction_events_userId_idx")
+  @@index([timestamp], map: "interaction_events_timestamp_idx")
+  @@index([eventType], map: "interaction_events_eventType_idx")
+  @@index([sectionId], map: "interaction_events_sectionId_idx")
+  @@index([sessionId, timestamp], map: "interaction_events_sessionId_timestamp_idx")
+  @@map("interaction_events")
+}
+
+model FrictionHistory {
+  id                   String        @id(map: "friction_history_pkey") @default(uuid()) @db.Uuid
+  sessionId            String        @db.Uuid
+  userId               String        @db.Uuid
+  sectionId            String
+  frictionScore        Float         @default(0)
+  frictionLevel        FrictionLevel @default(LOW)
+  repeatedClickScore   Float         @default(0)
+  hesitationScore      Float         @default(0)
+  validationErrorScore Float         @default(0)
+  navigationScore      Float         @default(0)
+  calculatedAt         DateTime      @default(now()) @db.Timestamptz(3)
+
+  session Session @relation(fields: [sessionId], references: [id], onDelete: Cascade, map: "friction_history_sessionId_fkey")
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade, map: "friction_history_userId_fkey")
+
+  @@index([sessionId], map: "friction_history_sessionId_idx")
+  @@index([userId], map: "friction_history_userId_idx")
+  @@index([sectionId], map: "friction_history_sectionId_idx")
+  @@index([calculatedAt], map: "friction_history_calculatedAt_idx")
+  @@index([sessionId, calculatedAt], map: "friction_history_sessionId_calculatedAt_idx")
+  @@map("friction_history")
+}
