@@ -27,7 +27,7 @@ npm start
 ## Stack
 
 Next.js 14 (App Router), React 18, JavaScript, Tailwind CSS 3, React hooks, Lucide React.
-No backend, no database. All data lives in React state.
+Phase 1/2 keep all data in React state. Phase 3A.1 adds the PostgreSQL + Prisma foundation in `apps/api` (no endpoints yet).
 
 ## Folder structure
 
@@ -188,3 +188,39 @@ to switch between the form and the monitor):
 5. **Backtracking.** Go Personal, Employment, Personal, Employment, Personal using the sidebar. Backtracks rise.
 6. **High friction.** Combine steps 2 to 4 on one section within a minute. The score reaches 61 or more and a red notification appears once.
 7. **Recovery.** Keep using the form normally. The score falls gradually and reaches 0 after about 60 s.
+
+---
+
+## Phase 3A.1 – PostgreSQL + Prisma foundation
+
+Monorepo layout (Turborepo, npm workspaces):
+
+```
+apps/web   Next.js app (Phase 1 + 2)
+apps/api   NestJS + Prisma 7 (Phase 3A.1: database only, no REST endpoints)
+```
+
+### Run it
+
+```bash
+npm install
+cp .env.example .env                    # set POSTGRES_PASSWORD (docker-compose)
+cp apps/api/.env.example apps/api/.env  # set DATABASE_URL with the same password
+npm run db:up                           # start PostgreSQL (auragen_db)
+npm run db:generate                     # prisma generate
+npm run db:migrate                      # prisma migrate dev (applies the init migration)
+npm run db:validate                     # prisma validate
+npm run db:verify                       # connects and counts rows in all 4 tables
+npm run dev                             # web on :3000, api on :4000
+```
+
+Without Docker, create the database yourself: `createdb auragen_db`.
+
+### Models
+
+- **User** – an applicant or admin. `externalUserId` (unique, optional) links to an auth provider; `role` USER/ADMIN; `accountStatus` ACTIVE/DISABLED.
+- **Session** – one pass through the application form. Tracks status, current section, completion %, overall friction score/level and a running event count.
+- **InteractionEvent** – one raw behavioural signal (click, hesitation, validation error...). `eventId` is client-generated and unique, so retried uploads are idempotent. `eventMetadata` is JSONB.
+- **FrictionHistory** – a point-in-time friction score per section with its four component scores. Written by the calculation phase, not yet.
+
+Deleting a User cascades to their sessions, events and history; deleting a Session cascades to its events and history.

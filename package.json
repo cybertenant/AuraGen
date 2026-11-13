@@ -2,22 +2,22 @@
   "name": "auragen",
   "version": "0.1.0",
   "private": true,
+  "packageManager": "npm@10.9.9",
+  "workspaces": ["apps/*"],
   "scripts": {
-    "dev": "next dev",
-    "build": "next build",
-    "start": "next start",
-    "lint": "next lint",
-    "test:friction": "node --test friction/friction.test.js"
-  },
-  "dependencies": {
-    "lucide-react": "^0.441.0",
-    "next": "14.2.15",
-    "react": "^18.3.1",
-    "react-dom": "^18.3.1"
+    "dev": "turbo run dev",
+    "build": "turbo run build",
+    "lint": "turbo run lint",
+    "test:friction": "npm run test:friction -w @auragen/web",
+    "db:up": "docker compose up -d postgres",
+    "db:down": "docker compose down",
+    "db:generate": "npm run prisma:generate -w @auragen/api",
+    "db:migrate": "npm run prisma:migrate -w @auragen/api",
+    "db:deploy": "npm run prisma:deploy -w @auragen/api",
+    "db:validate": "npm run prisma:validate -w @auragen/api",
+    "db:verify": "npm run db:verify -w @auragen/api"
   },
   "devDependencies": {
-    "autoprefixer": "^10.4.20",
-    "postcss": "^8.4.47",
-    "tailwindcss": "^3.4.13"
+    "turbo": "^2.5.0"
   }
 }
