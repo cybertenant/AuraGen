@@ -13,13 +13,33 @@ export default function FrictionTestPage() {
             </h1>
 
             <p className="text-slate-400 mb-8">
-                Move your mouse to test cursor tracking.
+                Move your mouse to test cursor tracking and speed.
             </p>
 
-            <div className="rounded-xl bg-slate-800 p-6 space-y-4">
-                <p>Cursor X: {cursorData.x}</p>
-                <p>Cursor Y: {cursorData.y}</p>
-                <p>Movement Count: {cursorData.movementCount}</p>
+            <div className="rounded-xl bg-slate-800 p-6 space-y-5">
+                <div>
+                    <p className="text-slate-400 text-sm">Cursor X</p>
+                    <p className="text-xl">{cursorData.x}</p>
+                </div>
+
+                <div>
+                    <p className="text-slate-400 text-sm">Cursor Y</p>
+                    <p className="text-xl">{cursorData.y}</p>
+                </div>
+
+                <div>
+                    <p className="text-slate-400 text-sm">Movement Count</p>
+                    <p className="text-xl">{cursorData.movementCount}</p>
+                </div>
+
+                <div>
+                    <p className="text-slate-400 text-sm">
+                        Cursor Speed
+                    </p>
+                    <p className="text-2xl font-bold text-green-400">
+                        {cursorData.speed} px/sec
+                    </p>
+                </div>
             </div>
         </main>
     );
