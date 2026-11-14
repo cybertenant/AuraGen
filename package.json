@@ -1,0 +1,24 @@
+{
+  "name": "auragen",
+  "version": "0.1.0",
+  "private": true,
+  "description": "AuraGen — Self-Healing Generative UI via Cognitive Load",
+  "engines": {
+    "node": ">=20.0.0",
+    "pnpm": ">=9.0.0"
+  },
+  "scripts": {
+    "dev": "pnpm --filter @auragen/shared build && pnpm --parallel --filter \"./apps/*\" dev",
+    "dev:web": "pnpm --filter @auragen/web dev",
+    "dev:server": "pnpm --filter @auragen/server dev",
+    "build": "pnpm --filter @auragen/shared build && pnpm --filter @auragen/server build && pnpm --filter @auragen/web build",
+    "typecheck": "pnpm --filter @auragen/shared build && pnpm -r typecheck",
+    "lint": "pnpm -r lint",
+    "test": "pnpm --filter @auragen/shared build && pnpm -r test"
+  },
+  "devDependencies": {
+    "@types/node": "^20.14.10",
+    "typescript": "^5.5.3",
+    "vitest": "^2.0.3"
+  }
+}
