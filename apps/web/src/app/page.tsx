@@ -17,6 +17,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { useTelemetrySocket } from "@/hooks/useTelemetrySocket";
+import { PersistenceWorkbench } from "@/components/persistence/PersistenceWorkbench";
 
 export default function AuraGenDashboardPage() {
   const {
@@ -89,7 +90,7 @@ export default function AuraGenDashboardPage() {
             </span>
           </div>
           <p className="text-[11px] leading-relaxed text-slate-500">
-            Real-time WebSocket pipeline ready for Day 4+ interaction telemetry.
+            Real-time WebSocket pipeline & Neon PostgreSQL persistence active.
           </p>
         </div>
       </aside>
@@ -111,7 +112,7 @@ export default function AuraGenDashboardPage() {
               <Radio className="mr-1.5 h-3 w-3" />
               {connected ? "Telemetry Live" : "Local Mode"}
             </Badge>
-            <Badge variant="neutral">Day 1 Foundation</Badge>
+            <Badge variant="neutral">Day 2 Persistence</Badge>
           </div>
         </header>
 
@@ -136,18 +137,11 @@ export default function AuraGenDashboardPage() {
 
             {/* Action Buttons */}
             <div className="flex flex-wrap items-center gap-3">
-              <Button
-                size="lg"
-                onClick={() => setFormPreviewBanner(true)}
-              >
+              <Button size="lg" onClick={() => setFormPreviewBanner(true)}>
                 <FileSpreadsheet className="mr-2 h-4 w-4" />
                 Open Financial Application
               </Button>
-              <Button
-                variant="amber"
-                size="lg"
-                onClick={simulateHighFriction}
-              >
+              <Button variant="amber" size="lg" onClick={simulateHighFriction}>
                 <Zap className="mr-2 h-4 w-4" />
                 Simulate High Friction
               </Button>
@@ -288,9 +282,9 @@ export default function AuraGenDashboardPage() {
                     </h4>
                   </div>
                   <p className="text-xs text-slate-400">
-                    Day 1 Foundation active. Full multi-section React Hook Form
-                    with field-level cognitive sensors will be mounted in upcoming
-                    stages.
+                    Use the Day 2 Neon Persistence Workbench below to test live
+                    form draft upserts and aggregated cognitive friction
+                    persistence.
                   </p>
                 </div>
                 <Button
@@ -303,6 +297,9 @@ export default function AuraGenDashboardPage() {
               </CardContent>
             </Card>
           )}
+
+          {/* Day 2 Persistence Workbench */}
+          <PersistenceWorkbench />
         </main>
       </div>
     </div>

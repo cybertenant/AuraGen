@@ -3,6 +3,8 @@ import {
   FrictionScoreSchema,
   FrictionSignalSchema,
   SessionSchema,
+  CreateFrictionEventInputSchema,
+  UpsertFormDraftInputSchema,
 } from "../index.js";
 
 describe("@auragen/shared Zod schemas", () => {
@@ -57,5 +59,54 @@ describe("@auragen/shared Zod schemas", () => {
     expect(session.frictionScore).toBe(0);
     expect(session.frictionLevel).toBe("low");
     expect(session.adaptationStatus).toBe("Waiting");
+  });
+
+  it("validates aggregated CreateFrictionEventInputSchema and rejects raw mouse coordinates", () => {
+    const validEvent = {
+      frictionScore: 76,
+      frictionLevel: "high",
+      signals: {
+        hesitation_count: 4,
+        validation_errors: 2,
+        repeated_clicks: 5,
+        backtracking: 2,
+        cursor_anomaly_score: 68.5,
+        observation_window_seconds: 10,
+      },
+    };
+    expect(CreateFrictionEventInputSchema.safeParse(validEvent).success).toBe(true);
+
+    const unaggregatedRawTelemetry = {
+      frictionScore: 76,
+      frictionLevel: "high",
+      signals: {
+        hesitation_count: 4,
+        raw_mouse_coordinates: [[120, 340]],
+      },
+    };
+    expect(
+      CreateFrictionEventInputSchema.safeParse(unaggregatedRawTelemetry).success
+    ).toBe(false);
+  });
+
+  it("blocks prohibited credential fields in UpsertFormDraftInputSchema", () => {
+    const safeDraft = {
+      formData: {
+        applicantType: "Corporate Treasury",
+        requestedFacilityUsd: 250000,
+        dscrRatio: "1.45",
+      },
+      schemaVersion: 1,
+    };
+    expect(UpsertFormDraftInputSchema.safeParse(safeDraft).success).toBe(true);
+
+    const unsafeDraft = {
+      formData: {
+        applicantType: "Corporate Treasury",
+        bankPassword: "secret-password-123",
+      },
+      schemaVersion: 1,
+    };
+    expect(UpsertFormDraftInputSchema.safeParse(unsafeDraft).success).toBe(false);
   });
 });

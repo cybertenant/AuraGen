@@ -2,22 +2,31 @@ import express, { Express } from "express";
 import cors from "cors";
 import { env } from "./config/env.js";
 import { healthRouter } from "./routes/health.route.js";
+import { createSessionsRouter } from "./routes/sessions.route.js";
 import { errorHandler } from "./middleware/errorHandler.js";
+import { PersistenceRepository } from "./repositories/persistence.repository.js";
 
-export function createApp(): Express {
+export interface CreateAppOptions {
+  persistenceRepository?: PersistenceRepository;
+}
+
+export function createApp(options?: CreateAppOptions): Express {
   const app = express();
 
   app.use(
     cors({
       origin: env.CORS_ORIGIN,
+      methods: ["GET", "POST", "PUT", "OPTIONS"],
       credentials: true,
     })
   );
 
-  app.use(express.json({ limit: "1mb" }));
+  // Sensible body size limit (64kb) to prevent oversized JSON payloads
+  app.use(express.json({ limit: "64kb" }));
 
   // Routes
   app.use("/", healthRouter);
+  app.use("/api/sessions", createSessionsRouter(options?.persistenceRepository));
 
   // 404 Handler
   app.use((_req, res) => {
