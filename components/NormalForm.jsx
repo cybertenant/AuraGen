@@ -1,3 +1,4 @@
+
 "use client";
 
 import { ArrowLeft, ArrowRight, CheckCircle2 } from "lucide-react";
@@ -10,6 +11,7 @@ import EmploymentInformation from "@/components/EmploymentInformation";
 import FinancialInformation from "@/components/FinancialInformation";
 import DocumentUpload from "@/components/DocumentUpload";
 import ApplicationReview from "@/components/ApplicationReview";
+import useFieldTracking from "@/hooks/useFieldTracking";
 
 const SHORT_LABELS = {
   personal: "Personal",
@@ -21,29 +23,42 @@ const SHORT_LABELS = {
 
 function SuccessMessage({ submission, name, onReset }) {
   const firstName = name ? name.trim().split(/\s+/)[0] : "";
+
   return (
     <div className="mx-auto max-w-xl rounded-2xl border border-emerald-200 bg-white p-8 text-center shadow-card">
       <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-emerald-100">
         <CheckCircle2 className="h-8 w-8 text-emerald-600" aria-hidden="true" />
       </div>
+
       <h2 className="text-xl font-semibold text-slate-900">
-        {firstName ? `Thank you, ${firstName}. Your application is in.` : "Your application is in."}
+        {firstName
+          ? `Thank you, ${firstName}. Your application is in.`
+          : "Your application is in."}
       </h2>
+
       <p className="mt-2 text-sm text-slate-600">
         We received your application and will email you once the review is complete.
       </p>
+
       <dl className="mx-auto mt-6 max-w-xs rounded-xl bg-slate-50 p-4 text-sm">
         <div className="flex justify-between py-1">
           <dt className="text-slate-500">Reference</dt>
-          <dd className="font-semibold text-slate-900">{submission.reference}</dd>
+          <dd className="font-semibold text-slate-900">
+            {submission.reference}
+          </dd>
         </div>
+
         <div className="flex justify-between py-1">
           <dt className="text-slate-500">Submitted</dt>
           <dd className="font-medium text-slate-900">
-            {new Date(submission.submittedAt).toLocaleString("en-US", { dateStyle: "medium", timeStyle: "short" })}
+            {new Date(submission.submittedAt).toLocaleString("en-US", {
+              dateStyle: "medium",
+              timeStyle: "short",
+            })}
           </dd>
         </div>
       </dl>
+
       <button
         type="button"
         onClick={onReset}
@@ -57,14 +72,23 @@ function SuccessMessage({ submission, name, onReset }) {
 
 export default function NormalForm() {
   const app = useApplication();
+  const fieldData = useFieldTracking();
+
   const { formData, errors, currentSection, submission } = app;
 
   if (submission) {
-    return <SuccessMessage submission={submission} name={formData.personal.fullName} onReset={app.resetApplication} />;
+    return (
+      <SuccessMessage
+        submission={submission}
+        name={formData.personal.fullName}
+        onReset={app.resetApplication}
+      />
+    );
   }
 
   const steps = FORM_SECTIONS.map((id) => {
     const p = getSectionProgress(id, formData);
+
     return {
       id,
       shortLabel: SHORT_LABELS[id],
@@ -86,16 +110,20 @@ export default function NormalForm() {
   };
 
   let body = null;
+
   switch (currentSection) {
     case "personal":
       body = <PersonalInformation {...fieldProps} />;
       break;
+
     case "employment":
       body = <EmploymentInformation {...fieldProps} />;
       break;
+
     case "financial":
       body = <FinancialInformation {...fieldProps} />;
       break;
+
     case "documents":
       body = (
         <DocumentUpload
@@ -106,6 +134,7 @@ export default function NormalForm() {
         />
       );
       break;
+
     case "review":
       body = (
         <ApplicationReview
@@ -116,6 +145,7 @@ export default function NormalForm() {
         />
       );
       break;
+
     default:
       body = null;
   }
@@ -136,17 +166,49 @@ export default function NormalForm() {
           <p className="text-sm text-slate-500">
             Step {index + 1} of {FORM_SECTIONS.length}
           </p>
-          <h2 className="mt-1 text-xl font-semibold text-slate-900">{meta.title}</h2>
-          <p className="mt-1 text-sm text-slate-600">{meta.description}</p>
+
+          <h2 className="mt-1 text-xl font-semibold text-slate-900">
+            {meta.title}
+          </h2>
+
+          <p className="mt-1 text-sm text-slate-600">
+            {meta.description}
+          </p>
         </header>
 
         {hasSectionErrors && !isReview ? (
-          <p role="alert" className="mb-5 rounded-lg border border-red-200 bg-red-50 px-3.5 py-2.5 text-sm text-red-700">
+          <p
+            role="alert"
+            className="mb-5 rounded-lg border border-red-200 bg-red-50 px-3.5 py-2.5 text-sm text-red-700"
+          >
             Fix the highlighted fields to continue.
           </p>
         ) : null}
 
         {body}
+
+        {/* AuraGen Field Tracking */}
+        <div className="mt-6 rounded-lg border border-slate-200 bg-slate-50 p-4">
+          <h3 className="mb-3 font-semibold text-slate-800">
+            AuraGen Field Tracking
+          </h3>
+
+          <p className="text-sm text-slate-600">
+            Section: {fieldData.section || "Waiting..."}
+          </p>
+
+          <p className="text-sm text-slate-600">
+            Field: {fieldData.field || "Waiting..."}
+          </p>
+
+          <p className="text-sm text-slate-600">
+            Interaction: {fieldData.lastInteraction || "None"}
+          </p>
+
+          <p className="text-sm text-slate-600">
+            Interaction Count: {fieldData.interactionCount}
+          </p>
+        </div>
       </div>
 
       <div className="flex items-center justify-between">
@@ -158,13 +220,17 @@ export default function NormalForm() {
           <ArrowLeft className="h-4 w-4" aria-hidden="true" />
           {index === 0 ? "Dashboard" : "Previous"}
         </button>
+
         {!isReview ? (
           <button
             type="button"
             onClick={app.goNext}
             className="inline-flex items-center gap-2 rounded-lg bg-blue-600 px-5 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-blue-700"
           >
-            {currentSection === "documents" ? "Review application" : "Next"}
+            {currentSection === "documents"
+              ? "Review application"
+              : "Next"}
+
             <ArrowRight className="h-4 w-4" aria-hidden="true" />
           </button>
         ) : null}
