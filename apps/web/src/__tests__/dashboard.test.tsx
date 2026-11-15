@@ -13,7 +13,7 @@ vi.mock("socket.io-client", () => ({
   }),
 }));
 
-describe("AuraGen Dashboard & Day 2 Persistence Workbench", () => {
+describe("AuraGen Dashboard, 5-Section Financial Loan Form & Day 2/3 Integration", () => {
   beforeEach(() => {
     window.localStorage.clear();
     vi.restoreAllMocks();
@@ -59,7 +59,58 @@ describe("AuraGen Dashboard & Day 2 Persistence Workbench", () => {
     );
   });
 
-  it("Scenario 5: creates a session, saves a draft, and restores the draft on page reload using only the session UUID in localStorage", async () => {
+  it("navigates across all 5 loan application sections, preserves values, and tracks backtracks & validation errors", async () => {
+    render(<AuraGenDashboardPage />);
+
+    // Section 1: Personal Information
+    expect(
+      screen.getByTestId("section-personal-information")
+    ).toBeInTheDocument();
+    const fullNameInput = screen.getByLabelText(
+      /Full Legal Name/i
+    ) as HTMLInputElement;
+    fireEvent.change(fullNameInput, {
+      target: { value: "Rohan Sharma Synthetic" },
+    });
+
+    // Advance to Section 2: Employment Details
+    fireEvent.click(screen.getByTestId("wizard-next-step-btn"));
+    await waitFor(() => {
+      expect(
+        screen.getByTestId("section-employment-details")
+      ).toBeInTheDocument();
+    });
+
+    // Advance to Section 3: Financial Information
+    fireEvent.click(screen.getByTestId("wizard-next-step-btn"));
+    await waitFor(() => {
+      expect(
+        screen.getByTestId("section-financial-information")
+      ).toBeInTheDocument();
+    });
+
+    // Navigate backward to Section 2 -> should increment telemetry backtracks and preserve values
+    fireEvent.click(screen.getByTestId("wizard-prev-step-btn"));
+    await waitFor(() => {
+      expect(
+        screen.getByTestId("section-employment-details")
+      ).toBeInTheDocument();
+    });
+    expect(screen.getByTestId("metric-backtracks")).toHaveTextContent("1");
+
+    // Navigate back to Section 1 and verify "Rohan Sharma Synthetic" was preserved
+    fireEvent.click(screen.getByTestId("wizard-prev-step-btn"));
+    await waitFor(() => {
+      expect(
+        screen.getByTestId("section-personal-information")
+      ).toBeInTheDocument();
+    });
+    expect(
+      (screen.getByLabelText(/Full Legal Name/i) as HTMLInputElement).value
+    ).toBe("Rohan Sharma Synthetic");
+  });
+
+  it("Scenario 5: creates a session, saves a 5-section loan draft, and restores the draft on page reload", async () => {
     const mockSessionId = "550e8400-e29b-41d4-a716-446655440099";
     const fetchMock = vi.fn(async (url: string, init?: RequestInit) => {
       if (url.endsWith("/api/sessions") && init?.method === "POST") {
@@ -77,7 +128,10 @@ describe("AuraGen Dashboard & Day 2 Persistence Workbench", () => {
           }),
         };
       }
-      if (url.endsWith(`/api/sessions/${mockSessionId}/draft`) && init?.method === "PUT") {
+      if (
+        url.endsWith(`/api/sessions/${mockSessionId}/draft`) &&
+        init?.method === "PUT"
+      ) {
         return {
           ok: true,
           status: 200,
@@ -87,11 +141,9 @@ describe("AuraGen Dashboard & Day 2 Persistence Workbench", () => {
               id: "660e8400-e29b-41d4-a716-446655440011",
               sessionId: mockSessionId,
               formData: {
-                entityLegalName: "Reload Survived Holdings",
-                requestedFacilityUsd: 900000,
-                debtServiceCoverageRatio: "1.75",
-                collateralClassification: "Tier-1 Commercial Receivables",
-                treasuryContactCode: "SYNTH-TR-904",
+                fullName: "Reload Survived Holdings",
+                employerOrEntityName: "Reload Survived Holdings",
+                requestedLoanAmount: 900000,
               },
               schemaVersion: 1,
               updatedAt: new Date().toISOString(),
@@ -124,11 +176,9 @@ describe("AuraGen Dashboard & Day 2 Persistence Workbench", () => {
               id: "660e8400-e29b-41d4-a716-446655440011",
               sessionId: mockSessionId,
               formData: {
-                entityLegalName: "Reload Survived Holdings",
-                requestedFacilityUsd: 900000,
-                debtServiceCoverageRatio: "1.75",
-                collateralClassification: "Tier-1 Commercial Receivables",
-                treasuryContactCode: "SYNTH-TR-904",
+                fullName: "Reload Survived Holdings",
+                employerOrEntityName: "Reload Survived Holdings",
+                requestedLoanAmount: 900000,
               },
               schemaVersion: 1,
               updatedAt: new Date().toISOString(),
@@ -156,26 +206,27 @@ describe("AuraGen Dashboard & Day 2 Persistence Workbench", () => {
       );
     });
 
-    // Confirm only the session ID is stored in localStorage (no sensitive form values)
-    expect(window.localStorage.getItem(SESSION_STORAGE_KEY)).toBe(mockSessionId);
+    expect(window.localStorage.getItem(SESSION_STORAGE_KEY)).toBe(
+      mockSessionId
+    );
 
-    // 2. Save Draft
+    // 2. Click "Save Draft to Neon"
     fireEvent.click(screen.getByTestId("save-draft-btn"));
     await waitFor(() => {
       expect(
         screen.getByTestId("persistence-status-banner")
-      ).toHaveTextContent(/Saved draft/i);
+      ).toHaveTextContent(/Saved 5-section loan draft/i);
     });
 
-    // 3. Simulate page refresh by unmounting and remounting component
+    // 3. Simulate page refresh by unmounting and remounting
     unmount();
     render(<AuraGenDashboardPage />);
 
     await waitFor(() => {
-      const entityInput = screen.getByLabelText(
-        /Synthetic Entity Legal Name/i
+      const fullNameInput = screen.getByLabelText(
+        /Full Legal Name/i
       ) as HTMLInputElement;
-      expect(entityInput.value).toBe("Reload Survived Holdings");
+      expect(fullNameInput.value).toBe("Reload Survived Holdings");
     });
   });
 });

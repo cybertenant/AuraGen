@@ -3,7 +3,6 @@
 import React, { useState, useEffect, useCallback } from "react";
 import {
   Database,
-  Save,
   RefreshCw,
   PlusCircle,
   AlertTriangle,
@@ -11,54 +10,39 @@ import {
   Activity,
   Loader2,
   ShieldAlert,
-  ArrowLeft,
-  ArrowRight,
 } from "lucide-react";
 import type {
   SessionRecord,
   FormDraftRecord,
   FrictionEventRecord,
   FrictionLevel,
+  FinancialLoanApplication,
 } from "@auragen/shared";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { useTelemetry } from "@/hooks/useTelemetry";
 import { TelemetryMonitorPanel } from "@/components/telemetry/TelemetryMonitorPanel";
+import {
+  FinancialLoanApplicationForm,
+  DEFAULT_LOAN_APPLICATION_VALUES,
+} from "@/components/persistence/FinancialLoanApplicationForm";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000";
 export const SESSION_STORAGE_KEY = "auragen_demo_session_id";
 
-interface SyntheticFormState {
-  entityLegalName: string;
-  requestedFacilityUsd: number;
-  debtServiceCoverageRatio: string;
-  collateralClassification: string;
-  treasuryContactCode: string;
-}
-
-const DEFAULT_SYNTHETIC_FORM: SyntheticFormState = {
-  entityLegalName: "Vanguard Meridian Synth Corp",
-  requestedFacilityUsd: 450000,
-  debtServiceCoverageRatio: "1.42",
-  collateralClassification: "Tier-1 Commercial Receivables",
-  treasuryContactCode: "SYNTH-TR-904",
-};
-
 export function PersistenceWorkbench() {
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [sessionMeta, setSessionMeta] = useState<SessionRecord | null>(null);
-  const [formState, setFormState] = useState<SyntheticFormState>(
-    DEFAULT_SYNTHETIC_FORM
-  );
+  const [initialLoanValues, setInitialLoanValues] = useState<
+    Partial<FinancialLoanApplication>
+  >(DEFAULT_LOAN_APPLICATION_VALUES);
   const [draftMeta, setDraftMeta] = useState<FormDraftRecord | null>(null);
   const [frictionHistory, setFrictionHistory] = useState<FrictionEventRecord[]>(
     []
   );
 
-  const [activeFormStep, setActiveFormStep] = useState<number>(1);
   const [consentGranted, setConsentGranted] = useState<boolean>(true);
-  const [validationNotice, setValidationNotice] = useState<string | null>(null);
 
   const {
     containerRef,
@@ -103,22 +87,32 @@ export function PersistenceWorkbench() {
       if (draftRes.ok) {
         const draftData = await draftRes.json();
         setDraftMeta(draftData.draft);
-        const savedForm = draftData.draft.formData as Partial<SyntheticFormState>;
-        setFormState({
-          entityLegalName:
-            savedForm.entityLegalName ?? DEFAULT_SYNTHETIC_FORM.entityLegalName,
-          requestedFacilityUsd:
-            Number(savedForm.requestedFacilityUsd) ||
-            DEFAULT_SYNTHETIC_FORM.requestedFacilityUsd,
-          debtServiceCoverageRatio:
-            savedForm.debtServiceCoverageRatio ??
-            DEFAULT_SYNTHETIC_FORM.debtServiceCoverageRatio,
-          collateralClassification:
-            savedForm.collateralClassification ??
-            DEFAULT_SYNTHETIC_FORM.collateralClassification,
-          treasuryContactCode:
-            savedForm.treasuryContactCode ??
-            DEFAULT_SYNTHETIC_FORM.treasuryContactCode,
+        const savedForm = (draftData.draft.formData ?? {}) as Record<
+          string,
+          unknown
+        >;
+
+        setInitialLoanValues({
+          ...DEFAULT_LOAN_APPLICATION_VALUES,
+          ...(savedForm as Partial<FinancialLoanApplication>),
+          fullName:
+            typeof savedForm.fullName === "string"
+              ? savedForm.fullName
+              : typeof savedForm.entityLegalName === "string"
+              ? savedForm.entityLegalName
+              : DEFAULT_LOAN_APPLICATION_VALUES.fullName,
+          employerOrEntityName:
+            typeof savedForm.employerOrEntityName === "string"
+              ? savedForm.employerOrEntityName
+              : typeof savedForm.entityLegalName === "string"
+              ? savedForm.entityLegalName
+              : DEFAULT_LOAN_APPLICATION_VALUES.employerOrEntityName,
+          requestedLoanAmount:
+            typeof savedForm.requestedLoanAmount === "number"
+              ? savedForm.requestedLoanAmount
+              : typeof savedForm.requestedFacilityUsd === "number"
+              ? savedForm.requestedFacilityUsd
+              : DEFAULT_LOAN_APPLICATION_VALUES.requestedLoanAmount,
         });
       } else if (draftRes.status === 404) {
         setDraftMeta(null);
@@ -196,46 +190,7 @@ export function PersistenceWorkbench() {
     }
   };
 
-  /**
-   * Validates synthetic financial fields without recording user-entered values in telemetry
-   */
-  const validateFinancialForm = (): boolean => {
-    setValidationNotice(null);
-
-    if (!formState.entityLegalName || formState.entityLegalName.trim().length < 3) {
-      recordValidationError("entityLegalName", "required");
-      setValidationNotice("Entity Legal Name requires at least 3 characters.");
-      return false;
-    }
-
-    if (
-      !Number.isFinite(formState.requestedFacilityUsd) ||
-      formState.requestedFacilityUsd < 10000 ||
-      formState.requestedFacilityUsd > 50000000
-    ) {
-      recordValidationError("requestedFacilityUsd", "range");
-      setValidationNotice(
-        "Requested Facility must be between $10,000 and $50,000,000."
-      );
-      return false;
-    }
-
-    const dscr = Number(formState.debtServiceCoverageRatio);
-    if (!Number.isFinite(dscr) || dscr < 1.0 || dscr > 10.0) {
-      recordValidationError("debtServiceCoverageRatio", "ratio");
-      setValidationNotice("Target DSCR Ratio must be a valid ratio between 1.00 and 10.00.");
-      return false;
-    }
-
-    return true;
-  };
-
-  const handleSaveDraft = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!validateFinancialForm()) {
-      return;
-    }
-
+  const handleSaveLoanDraft = async (values: FinancialLoanApplication) => {
     if (!sessionId) {
       setStatusBanner({
         type: "error",
@@ -251,7 +206,11 @@ export function PersistenceWorkbench() {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          formData: formState,
+          formData: {
+            ...values,
+            entityLegalName: values.employerOrEntityName,
+            requestedFacilityUsd: values.requestedLoanAmount,
+          },
           schemaVersion: (draftMeta?.schemaVersion ?? 0) + 1,
         }),
       });
@@ -263,7 +222,7 @@ export function PersistenceWorkbench() {
       setDraftMeta(data.draft);
       setStatusBanner({
         type: "success",
-        message: `Saved draft (Schema v${data.draft.schemaVersion}) to Neon PostgreSQL.`,
+        message: `Saved 5-section loan draft (Schema v${data.draft.schemaVersion}) to Neon PostgreSQL.`,
       });
     } catch (err) {
       setStatusBanner({
@@ -273,13 +232,6 @@ export function PersistenceWorkbench() {
     } finally {
       setIsLoading(false);
     }
-  };
-
-  const handleStepNavigation = (nextStep: number) => {
-    if (nextStep < activeFormStep) {
-      recordBacktrack(`step_${activeFormStep}_to_${nextStep}`);
-    }
-    setActiveFormStep(nextStep);
   };
 
   const handleRecordFrictionPreset = async (
@@ -340,7 +292,6 @@ export function PersistenceWorkbench() {
         },
       },
       live_telemetry: {
-        // Day 4 will replace this provisional heuristic with the full Cognitive Friction Engine
         frictionScore: Math.min(
           100,
           liveSignals.hesitation_count * 15 +
@@ -425,13 +376,13 @@ export function PersistenceWorkbench() {
           <div className="flex items-center gap-2">
             <Database className="h-5 w-5 text-emerald-400" />
             <h2 className="text-xl font-bold text-white">
-              Neon PostgreSQL & Instrumented Financial Form Workbench
+              5-Section Financial Loan Application & Neon Persistence
             </h2>
           </div>
           <p className="text-xs text-slate-400 mt-1">
-            All form controls below are instrumented with{" "}
-            <code>data-auragen-field</code> and <code>data-auragen-action</code>{" "}
-            telemetry sensors.
+            Built with React Hook Form (15 fields across 5 sections),{" "}
+            <code>data-auragen-field</code> telemetry sensors, and Neon{" "}
+            <code>form_drafts</code> persistence.
           </p>
         </div>
 
@@ -498,14 +449,14 @@ export function PersistenceWorkbench() {
         </div>
       )}
 
-      {/* Grid: Form Draft Persistence + Aggregated Friction History */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* Left Column: Synthetic Financial Form Draft */}
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between">
+      {/* Grid: 5-Section Financial Loan Application + Aggregated Friction History */}
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+        {/* Left Column (7 cols): Complete 5-Section Financial Loan Application Form */}
+        <Card className="lg:col-span-7">
+          <CardHeader className="flex flex-row items-center justify-between border-b border-slate-800/80 pb-4">
             <div>
-              <CardTitle className="text-slate-200 font-semibold">
-                Synthetic Commercial Credit Draft (form_drafts)
+              <CardTitle className="text-slate-100 font-semibold text-base">
+                Institutional & Commercial Financial Loan Application
               </CardTitle>
               <p className="text-xs text-slate-400 mt-1">
                 Active Session:{" "}
@@ -518,188 +469,44 @@ export function PersistenceWorkbench() {
               </p>
             </div>
             <div className="flex items-center gap-2">
-              <Badge variant="neutral">Step {activeFormStep} of 2</Badge>
-              {draftMeta && (
+              {draftMeta ? (
                 <Badge variant="default">
-                  Schema v{draftMeta.schemaVersion}
+                  Saved Draft v{draftMeta.schemaVersion}
+                </Badge>
+              ) : (
+                <Badge variant="neutral">
+                  {sessionMeta ? "Unsaved Draft" : "No Session"}
                 </Badge>
               )}
             </div>
           </CardHeader>
-          <CardContent>
-            {validationNotice && (
-              <div
-                role="alert"
-                data-testid="form-validation-alert"
-                className="mb-4 rounded-lg border border-rose-500/40 bg-rose-500/10 px-3 py-2 text-xs text-rose-300"
-              >
-                {validationNotice}
-              </div>
-            )}
-
-            <form onSubmit={handleSaveDraft} className="space-y-4" noValidate>
-              {/* Section 1: Entity & Facility Sizing */}
-              <div
-                data-auragen-section="entity_and_facility"
-                data-auragen-section-index="1"
-                className="space-y-4"
-              >
-                <div>
-                  <label
-                    htmlFor="entityLegalName"
-                    className="block text-xs font-medium text-slate-300 mb-1"
-                  >
-                    Synthetic Entity Legal Name
-                  </label>
-                  <input
-                    id="entityLegalName"
-                    data-auragen-field="entityLegalName"
-                    type="text"
-                    value={formState.entityLegalName}
-                    onChange={(e) =>
-                      setFormState((s) => ({
-                        ...s,
-                        entityLegalName: e.target.value,
-                      }))
-                    }
-                    className="w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-slate-100 focus:border-emerald-500 focus:outline-none"
-                  />
-                </div>
-
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  <div>
-                    <label
-                      htmlFor="requestedFacilityUsd"
-                      className="block text-xs font-medium text-slate-300 mb-1"
-                    >
-                      Requested Facility (USD)
-                    </label>
-                    <input
-                      id="requestedFacilityUsd"
-                      data-auragen-field="requestedFacilityUsd"
-                      type="number"
-                      value={formState.requestedFacilityUsd}
-                      onChange={(e) =>
-                        setFormState((s) => ({
-                          ...s,
-                          requestedFacilityUsd: Number(e.target.value),
-                        }))
-                      }
-                      className="w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-slate-100 focus:border-emerald-500 focus:outline-none"
-                    />
-                  </div>
-
-                  <div>
-                    <label
-                      htmlFor="debtServiceCoverageRatio"
-                      className="block text-xs font-medium text-slate-300 mb-1"
-                    >
-                      Target DSCR Ratio
-                    </label>
-                    <input
-                      id="debtServiceCoverageRatio"
-                      data-auragen-field="debtServiceCoverageRatio"
-                      type="text"
-                      value={formState.debtServiceCoverageRatio}
-                      onChange={(e) =>
-                        setFormState((s) => ({
-                          ...s,
-                          debtServiceCoverageRatio: e.target.value,
-                        }))
-                      }
-                      className="w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-slate-100 focus:border-emerald-500 focus:outline-none"
-                    />
-                  </div>
-                </div>
-              </div>
-
-              {/* Section 2: Collateral & Treasury Metadata */}
-              <div
-                data-auragen-section="collateral_and_treasury"
-                data-auragen-section-index="2"
-                className="space-y-4 pt-2 border-t border-slate-800/60"
-              >
-                <div>
-                  <label
-                    htmlFor="collateralClassification"
-                    className="block text-xs font-medium text-slate-300 mb-1"
-                  >
-                    Collateral Classification
-                  </label>
-                  <input
-                    id="collateralClassification"
-                    data-auragen-field="collateralClassification"
-                    type="text"
-                    value={formState.collateralClassification}
-                    onChange={(e) =>
-                      setFormState((s) => ({
-                        ...s,
-                        collateralClassification: e.target.value,
-                      }))
-                    }
-                    className="w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-slate-100 focus:border-emerald-500 focus:outline-none"
-                  />
-                </div>
-              </div>
-
-              {/* Step Navigation & Submit Controls */}
-              <div className="flex flex-wrap items-center justify-between gap-2 pt-2">
-                <div className="flex items-center gap-2">
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    disabled={activeFormStep === 1}
-                    onClick={() => handleStepNavigation(1)}
-                    data-auragen-action="wizard-prev-step"
-                    data-testid="wizard-prev-step-btn"
-                  >
-                    <ArrowLeft className="mr-1 h-3.5 w-3.5" />
-                    Previous Section
-                  </Button>
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    disabled={activeFormStep === 2}
-                    onClick={() => handleStepNavigation(2)}
-                    data-auragen-action="wizard-next-step"
-                    data-testid="wizard-next-step-btn"
-                  >
-                    Next Section
-                    <ArrowRight className="ml-1 h-3.5 w-3.5" />
-                  </Button>
-                </div>
-
-                <Button
-                  type="submit"
-                  disabled={isLoading}
-                  data-auragen-action="submit"
-                  data-testid="save-draft-btn"
-                >
-                  <Save className="mr-2 h-4 w-4" />
-                  Save Draft to Neon
-                </Button>
-              </div>
-            </form>
+          <CardContent className="pt-5">
+            <FinancialLoanApplicationForm
+              initialValues={initialLoanValues}
+              disabled={isLoading}
+              onSaveDraft={handleSaveLoanDraft}
+              onValidationError={(fieldId, category) =>
+                recordValidationError(fieldId, category)
+              }
+              onBacktrack={(reason) => recordBacktrack(reason)}
+            />
           </CardContent>
         </Card>
 
-        {/* Right Column: Aggregated Cognitive Friction Events */}
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between">
+        {/* Right Column (5 cols): Aggregated Cognitive Friction Events */}
+        <Card className="lg:col-span-5">
+          <CardHeader className="flex flex-row items-center justify-between border-b border-slate-800/80 pb-4">
             <div>
-              <CardTitle className="text-slate-200 font-semibold">
-                Aggregated Friction Telemetry (friction_events)
+              <CardTitle className="text-slate-100 font-semibold text-base">
+                Aggregated Friction History (friction_events)
               </CardTitle>
               <p className="text-xs text-slate-400 mt-1">
-                Stores windowed signal aggregates (no raw mouse or keystroke
-                streams).
+                Stores windowed signal aggregates in Neon PostgreSQL.
               </p>
             </div>
             <Badge variant="neutral">{frictionHistory.length} Records</Badge>
           </CardHeader>
-          <CardContent className="space-y-4">
+          <CardContent className="pt-5 space-y-4">
             <div className="flex flex-wrap gap-2">
               <Button
                 variant="default"
@@ -745,7 +552,7 @@ export function PersistenceWorkbench() {
 
             <div
               data-testid="friction-history-list"
-              className="space-y-2.5 max-h-64 overflow-y-auto pr-1"
+              className="space-y-2.5 max-h-80 overflow-y-auto pr-1"
             >
               {frictionHistory.length === 0 ? (
                 <div className="rounded-lg border border-slate-800 bg-slate-950/60 p-6 text-center text-xs text-slate-500">

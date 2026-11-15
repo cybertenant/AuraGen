@@ -43,7 +43,7 @@ export function getPool(): pg.Pool {
       connectionString: normalizeConnectionString(env.DATABASE_URL),
       max: 10,
       idleTimeoutMillis: 30000,
-      connectionTimeoutMillis: 8000,
+      connectionTimeoutMillis: 5000,
     });
 
     pool.on("error", (err) => {
@@ -64,7 +64,7 @@ export function getDb(): NodePgDatabase<typeof schema> {
   return dbInstance;
 }
 
-export async function checkDatabaseHealth(): Promise<{
+export async function checkDatabaseHealth(timeoutMs = 2000): Promise<{
   connected: boolean;
   configured: boolean;
   latencyMs: number | null;
@@ -78,9 +78,19 @@ export async function checkDatabaseHealth(): Promise<{
   }
 
   const start = Date.now();
+  let timer: ReturnType<typeof setTimeout> | null = null;
+
   try {
     const db = getDb();
-    await db.execute(sql`SELECT 1`);
+    const timeoutPromise = new Promise<never>((_, reject) => {
+      timer = setTimeout(
+        () => reject(new Error("Database health check timed out")),
+        timeoutMs
+      );
+    });
+
+    await Promise.race([db.execute(sql`SELECT 1`), timeoutPromise]);
+
     return {
       connected: true,
       configured: true,
@@ -95,6 +105,8 @@ export async function checkDatabaseHealth(): Promise<{
       configured: true,
       latencyMs: null,
     };
+  } finally {
+    if (timer) clearTimeout(timer);
   }
 }
 

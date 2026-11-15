@@ -248,3 +248,93 @@ export const HealthResponseSchema = z.object({
     })
     .optional(),
 });
+/**
+ * 5-Section Complete Financial Loan Application Schema (14 Fields)
+ * Sections:
+ * 1. Personal Information (4 fields)
+ * 2. Employment Details (3 fields)
+ * 3. Financial Information (4 fields)
+ * 4. Loan Details (3 fields)
+ * 5. Review & Declaration (2 fields)
+ */
+export const EmploymentStatusSchema = z.enum([
+  "full_time",
+  "self_employed",
+  "contractor",
+  "business_owner",
+]);
+
+export const LoanPurposeSchema = z.enum([
+  "working_capital",
+  "equipment_acquisition",
+  "debt_refinancing",
+  "commercial_expansion",
+]);
+
+export const CollateralTypeSchema = z.enum([
+  "commercial_receivables",
+  "real_estate_equity",
+  "equipment_lien",
+  "unsecured_guaranty",
+]);
+
+export const FinancialLoanApplicationSchema = z.object({
+  // Section 1: Personal Information
+  fullName: z.string().min(3, "Full legal name must be at least 3 characters"),
+  emailAddress: z.string().email("Enter a valid synthetic email address"),
+  phoneNumber: z
+    .string()
+    .min(7, "Phone number must be at least 7 characters"),
+  residencyPostalCode: z
+    .string()
+    .min(4, "Postal/ZIP code must be at least 4 characters"),
+
+  // Section 2: Employment Details
+  employmentStatus: EmploymentStatusSchema,
+  employerOrEntityName: z
+    .string()
+    .min(2, "Employer or business entity name is required"),
+  yearsInCurrentRole: z.coerce
+    .number()
+    .min(0, "Years in role cannot be negative")
+    .max(60, "Years in role must be 60 or less"),
+
+  // Section 3: Financial Information
+  annualIncome: z.coerce
+    .number()
+    .min(12000, "Annual income must be at least $12,000")
+    .max(50000000, "Annual income exceeds synthetic demo cap"),
+  monthlyHousingOrLeaseCost: z.coerce
+    .number()
+    .min(0, "Monthly housing/lease cost cannot be negative")
+    .max(1000000, "Monthly cost exceeds synthetic cap"),
+  existingMonthlyDebtObligations: z.coerce
+    .number()
+    .min(0, "Monthly debt obligations cannot be negative")
+    .max(1000000, "Monthly debt exceeds synthetic cap"),
+  liquidReservesUsd: z.coerce
+    .number()
+    .min(0, "Liquid reserves cannot be negative")
+    .max(100000000, "Liquid reserves exceed synthetic cap"),
+
+  // Section 4: Loan Details
+  requestedLoanAmount: z.coerce
+    .number()
+    .min(5000, "Requested loan amount must be at least $5,000")
+    .max(25000000, "Requested loan amount must be $25,000,000 or less"),
+  loanPurpose: LoanPurposeSchema,
+  repaymentTermMonths: z.coerce
+    .number()
+    .int()
+    .min(6, "Minimum repayment term is 6 months")
+    .max(360, "Maximum repayment term is 360 months"),
+  collateralType: CollateralTypeSchema,
+
+  // Section 5: Review and Declaration
+  syntheticDataDeclaration: z.boolean().refine((val) => val === true, {
+    message: "You must confirm that all entered data is synthetic",
+  }),
+  termsAndCreditCheckConsent: z.boolean().refine((val) => val === true, {
+    message: "You must accept the synthetic underwriting terms to submit",
+  }),
+});

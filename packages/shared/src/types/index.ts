@@ -21,6 +21,10 @@ import {
   TelemetrySignalSchema,
   TelemetrySnapshotSchema,
   HealthResponseSchema,
+  EmploymentStatusSchema,
+  LoanPurposeSchema,
+  CollateralTypeSchema,
+  FinancialLoanApplicationSchema,
 } from "../schemas/index.js";
 
 export type FrictionLevel = z.infer<typeof FrictionLevelSchema>;
@@ -64,3 +68,7 @@ export interface ClientToServerEvents {
   "telemetry:simulate_high_friction": (payload: { sessionId: string }) => void;
   "telemetry:reset_friction": (payload: { sessionId: string }) => void;
 }
+export type EmploymentStatus = z.infer<typeof EmploymentStatusSchema>;
+export type LoanPurpose = z.infer<typeof LoanPurposeSchema>;
+export type CollateralType = z.infer<typeof CollateralTypeSchema>;
+export type FinancialLoanApplication = z.infer<typeof FinancialLoanApplicationSchema>;
