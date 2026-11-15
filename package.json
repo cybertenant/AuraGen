@@ -1,23 +1,28 @@
 {
   "name": "auragen",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": true,
-  "packageManager": "npm@10.9.9",
-  "workspaces": ["apps/*"],
+  "description": "AuraGen — Self-Healing Generative UI via Cognitive Load",
+  "engines": {
+    "node": ">=20.0.0",
+    "pnpm": ">=9.0.0"
+  },
   "scripts": {
-    "dev": "turbo run dev",
-    "build": "turbo run build",
-    "lint": "turbo run lint",
-    "test:friction": "npm run test:friction -w @auragen/web",
-    "db:up": "docker compose up -d postgres",
-    "db:down": "docker compose down",
-    "db:generate": "npm run prisma:generate -w @auragen/api",
-    "db:migrate": "npm run prisma:migrate -w @auragen/api",
-    "db:deploy": "npm run prisma:deploy -w @auragen/api",
-    "db:validate": "npm run prisma:validate -w @auragen/api",
-    "db:verify": "npm run db:verify -w @auragen/api"
+    "dev": "pnpm --filter @auragen/shared build && pnpm --parallel --filter \"./apps/*\" dev",
+    "dev:web": "pnpm --filter @auragen/web dev",
+    "dev:server": "pnpm --filter @auragen/server dev",
+    "build": "pnpm --filter @auragen/shared build && pnpm --filter @auragen/server build && pnpm --filter @auragen/web build",
+    "typecheck": "pnpm --filter @auragen/shared build && pnpm -r typecheck",
+    "lint": "pnpm -r lint",
+    "test": "pnpm --filter @auragen/shared build && pnpm -r test",
+    "db:generate": "pnpm --filter @auragen/server db:generate",
+    "db:migrate": "pnpm --filter @auragen/server db:migrate",
+    "db:push": "pnpm --filter @auragen/server db:push",
+    "db:studio": "pnpm --filter @auragen/server db:studio"
   },
   "devDependencies": {
-    "turbo": "^2.5.0"
+    "@types/node": "^20.14.10",
+    "typescript": "^5.5.3",
+    "vitest": "^2.0.3"
   }
 }
