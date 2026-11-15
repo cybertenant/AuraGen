@@ -110,7 +110,9 @@ export const SyntheticFormDataSchema = z
       ];
       return !Object.keys(data).some((k) => {
         const normalized = k.toLowerCase();
-        return forbiddenKeys.includes(normalized) || normalized.includes("password");
+        return (
+          forbiddenKeys.includes(normalized) || normalized.includes("password")
+        );
       });
     },
     {
@@ -133,7 +135,7 @@ export const FormDraftRecordSchema = z.object({
 });
 
 /**
- * Day 2: Aggregated Telemetry Signals (Zero raw mouse coordinates or keyloggers)
+ * Day 2: Aggregated Telemetry Signals for DB Persistence (Zero raw mouse coordinates or keyloggers)
  */
 export const AggregatedSignalsSchema = z
   .object({
@@ -162,7 +164,75 @@ export const FrictionEventRecordSchema = z.object({
 });
 
 /**
- * Day 2: Backend Health Response Schema (includes honest database status)
+ * Day 3: Privacy-Conscious Interaction Telemetry Schemas
+ */
+export const ValidationErrorCategorySchema = z.enum([
+  "required",
+  "format",
+  "range",
+  "ratio",
+  "schema",
+  "custom",
+]);
+
+export const ValidationErrorSignalSchema = z
+  .object({
+    fieldId: z.string().min(1).max(120),
+    errorCategory: ValidationErrorCategorySchema.default("custom"),
+    timestamp: z.number().int().positive(),
+    errorCount: z.number().int().positive().default(1),
+  })
+  .strict();
+
+export const CursorAnomalyMetricsSchema = z
+  .object({
+    sampleCount: z.number().int().nonnegative().default(0),
+    averageVelocityPxPerMs: z.number().min(0).max(100).default(0),
+    directionChanges: z.number().int().nonnegative().default(0),
+    excessiveMovementBursts: z.number().int().nonnegative().default(0),
+    normalizedScore: z.number().min(0).max(1).default(0),
+  })
+  .strict();
+
+export const TelemetrySignalKindSchema = z.enum([
+  "field_focus",
+  "field_hesitation",
+  "repeated_click",
+  "validation_error",
+  "backtrack",
+  "cursor_anomaly",
+]);
+
+export const TelemetrySignalSchema = z
+  .object({
+    kind: TelemetrySignalKindSchema,
+    targetId: z.string().min(1).max(120),
+    timestamp: z.number().int().positive(),
+    durationMs: z.number().nonnegative().optional(),
+    errorCategory: ValidationErrorCategorySchema.optional(),
+  })
+  .strict();
+
+export const TelemetrySnapshotSchema = z
+  .object({
+    observationWindowSeconds: z
+      .number()
+      .int()
+      .positive()
+      .max(3600)
+      .default(30),
+    fieldFocusCount: z.number().int().nonnegative().default(0),
+    hesitationCount: z.number().int().nonnegative().default(0),
+    totalFieldFocusDurationMs: z.number().nonnegative().default(0),
+    validationErrors: z.number().int().nonnegative().default(0),
+    repeatedClicks: z.number().int().nonnegative().default(0),
+    backtracks: z.number().int().nonnegative().default(0),
+    cursorAnomalyScore: z.number().min(0).max(1).default(0),
+  })
+  .strict();
+
+/**
+ * Backend Health Response Schema
  */
 export const HealthResponseSchema = z.object({
   status: z.enum(["ok", "degraded"]),

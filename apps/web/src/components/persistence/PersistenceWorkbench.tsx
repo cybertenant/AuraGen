@@ -11,6 +11,8 @@ import {
   Activity,
   Loader2,
   ShieldAlert,
+  ArrowLeft,
+  ArrowRight,
 } from "lucide-react";
 import type {
   SessionRecord,
@@ -21,6 +23,8 @@ import type {
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { useTelemetry } from "@/hooks/useTelemetry";
+import { TelemetryMonitorPanel } from "@/components/telemetry/TelemetryMonitorPanel";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000";
 export const SESSION_STORAGE_KEY = "auragen_demo_session_id";
@@ -51,6 +55,24 @@ export function PersistenceWorkbench() {
   const [frictionHistory, setFrictionHistory] = useState<FrictionEventRecord[]>(
     []
   );
+
+  const [activeFormStep, setActiveFormStep] = useState<number>(1);
+  const [consentGranted, setConsentGranted] = useState<boolean>(true);
+  const [validationNotice, setValidationNotice] = useState<string | null>(null);
+
+  const {
+    containerRef,
+    metrics,
+    recordValidationError,
+    recordBacktrack,
+    simulateCursorAnomalyBurst,
+    resetTelemetry,
+    toDatabaseAggregatedSignals,
+  } = useTelemetry({
+    enabled: true,
+    consentGranted,
+    observationWindowSeconds: 30,
+  });
 
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [statusBanner, setStatusBanner] = useState<{
@@ -174,8 +196,46 @@ export function PersistenceWorkbench() {
     }
   };
 
+  /**
+   * Validates synthetic financial fields without recording user-entered values in telemetry
+   */
+  const validateFinancialForm = (): boolean => {
+    setValidationNotice(null);
+
+    if (!formState.entityLegalName || formState.entityLegalName.trim().length < 3) {
+      recordValidationError("entityLegalName", "required");
+      setValidationNotice("Entity Legal Name requires at least 3 characters.");
+      return false;
+    }
+
+    if (
+      !Number.isFinite(formState.requestedFacilityUsd) ||
+      formState.requestedFacilityUsd < 10000 ||
+      formState.requestedFacilityUsd > 50000000
+    ) {
+      recordValidationError("requestedFacilityUsd", "range");
+      setValidationNotice(
+        "Requested Facility must be between $10,000 and $50,000,000."
+      );
+      return false;
+    }
+
+    const dscr = Number(formState.debtServiceCoverageRatio);
+    if (!Number.isFinite(dscr) || dscr < 1.0 || dscr > 10.0) {
+      recordValidationError("debtServiceCoverageRatio", "ratio");
+      setValidationNotice("Target DSCR Ratio must be a valid ratio between 1.00 and 10.00.");
+      return false;
+    }
+
+    return true;
+  };
+
   const handleSaveDraft = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!validateFinancialForm()) {
+      return;
+    }
+
     if (!sessionId) {
       setStatusBanner({
         type: "error",
@@ -215,8 +275,15 @@ export function PersistenceWorkbench() {
     }
   };
 
+  const handleStepNavigation = (nextStep: number) => {
+    if (nextStep < activeFormStep) {
+      recordBacktrack(`step_${activeFormStep}_to_${nextStep}`);
+    }
+    setActiveFormStep(nextStep);
+  };
+
   const handleRecordFrictionPreset = async (
-    preset: "low" | "medium" | "high"
+    preset: "low" | "medium" | "high" | "live_telemetry"
   ) => {
     if (!sessionId) {
       setStatusBanner({
@@ -226,19 +293,14 @@ export function PersistenceWorkbench() {
       return;
     }
 
+    const liveSignals = toDatabaseAggregatedSignals();
+
     const payloads: Record<
-      FrictionLevel,
+      "low" | "medium" | "high" | "live_telemetry",
       {
         frictionScore: number;
         frictionLevel: FrictionLevel;
-        signals: {
-          hesitation_count: number;
-          validation_errors: number;
-          repeated_clicks: number;
-          backtracking: number;
-          cursor_anomaly_score: number;
-          observation_window_seconds: number;
-        };
+        signals: typeof liveSignals;
       }
     > = {
       low: {
@@ -277,17 +339,36 @@ export function PersistenceWorkbench() {
           observation_window_seconds: 10,
         },
       },
+      live_telemetry: {
+        // Day 4 will replace this provisional heuristic with the full Cognitive Friction Engine
+        frictionScore: Math.min(
+          100,
+          liveSignals.hesitation_count * 15 +
+            liveSignals.validation_errors * 20 +
+            liveSignals.repeated_clicks * 15 +
+            liveSignals.backtracking * 15 +
+            Math.round(liveSignals.cursor_anomaly_score * 0.25)
+        ),
+        frictionLevel:
+          liveSignals.validation_errors + liveSignals.hesitation_count >= 3
+            ? "high"
+            : liveSignals.validation_errors + liveSignals.repeated_clicks >= 1
+            ? "medium"
+            : "low",
+        signals: liveSignals,
+      },
     };
 
     setIsLoading(true);
     setStatusBanner(null);
     try {
+      const selectedPayload = payloads[preset];
       const res = await fetch(
         `${API_BASE}/api/sessions/${sessionId}/friction-events`,
         {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(payloads[preset]),
+          body: JSON.stringify(selectedPayload),
         }
       );
       const data = await res.json();
@@ -322,21 +403,35 @@ export function PersistenceWorkbench() {
 
   return (
     <section
-      aria-label="Day 2 Neon PostgreSQL Persistence Workbench"
+      ref={containerRef}
+      aria-label="Day 2 & Day 3 Persistence and Telemetry Workbench"
       className="space-y-6 pt-4 border-t border-slate-800/80"
     >
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+      {/* Day 3 Live Telemetry Monitor Panel */}
+      <TelemetryMonitorPanel
+        metrics={metrics}
+        consentGranted={consentGranted}
+        onToggleConsent={setConsentGranted}
+        onSimulateValidationError={(fieldId, category) =>
+          recordValidationError(fieldId, category)
+        }
+        onSimulateBacktrack={() => recordBacktrack("simulated_wizard_backtrack")}
+        onSimulateCursorAnomaly={simulateCursorAnomalyBurst}
+        onResetTelemetry={resetTelemetry}
+      />
+
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 pt-2">
         <div>
           <div className="flex items-center gap-2">
             <Database className="h-5 w-5 text-emerald-400" />
             <h2 className="text-xl font-bold text-white">
-              Day 2: Neon PostgreSQL & Drizzle Persistence Workbench
+              Neon PostgreSQL & Instrumented Financial Form Workbench
             </h2>
           </div>
           <p className="text-xs text-slate-400 mt-1">
-            Create backend UUID sessions, upsert synthetic financial form drafts,
-            verify survival across page reloads, and persist aggregated
-            telemetry snapshots.
+            All form controls below are instrumented with{" "}
+            <code>data-auragen-field</code> and <code>data-auragen-action</code>{" "}
+            telemetry sensors.
           </p>
         </div>
 
@@ -344,6 +439,7 @@ export function PersistenceWorkbench() {
           <Button
             onClick={handleCreateSession}
             disabled={isLoading}
+            data-auragen-action="create-session"
             data-testid="create-session-btn"
           >
             {isLoading ? (
@@ -359,6 +455,7 @@ export function PersistenceWorkbench() {
               variant="secondary"
               onClick={() => void loadSessionData(sessionId)}
               disabled={isLoading}
+              data-auragen-action="reload-session"
               data-testid="reload-session-btn"
             >
               <RefreshCw className="mr-2 h-4 w-4" />
@@ -372,11 +469,10 @@ export function PersistenceWorkbench() {
       <div className="rounded-lg border border-amber-500/20 bg-amber-500/5 px-4 py-3 flex items-start gap-3 text-xs text-amber-200/90">
         <ShieldAlert className="h-4 w-4 text-amber-400 shrink-0 mt-0.5" />
         <div>
-          <span className="font-semibold">Synthetic Demo Notice:</span> Only the
-          session UUID is stored in <code>localStorage</code> for page-refresh
-          continuity. Anonymous UUIDs are not authentication; use synthetic
-          corporate metrics only—never enter real bank passwords, SSNs, or
-          account numbers.
+          <span className="font-semibold">Zero-PII Telemetry Guardrail:</span>{" "}
+          Interaction sensors track focus duration, click cadence, and
+          validation categories using stable field IDs—never recording typed
+          characters, financial figures, or raw cursor trajectories.
         </div>
       </div>
 
@@ -421,72 +517,124 @@ export function PersistenceWorkbench() {
                 </code>
               </p>
             </div>
-            {draftMeta && (
-              <Badge variant="default">
-                Schema v{draftMeta.schemaVersion}
-              </Badge>
-            )}
+            <div className="flex items-center gap-2">
+              <Badge variant="neutral">Step {activeFormStep} of 2</Badge>
+              {draftMeta && (
+                <Badge variant="default">
+                  Schema v{draftMeta.schemaVersion}
+                </Badge>
+              )}
+            </div>
           </CardHeader>
           <CardContent>
-            <form onSubmit={handleSaveDraft} className="space-y-4">
-              <div>
-                <label
-                  htmlFor="entityLegalName"
-                  className="block text-xs font-medium text-slate-300 mb-1"
-                >
-                  Synthetic Entity Legal Name
-                </label>
-                <input
-                  id="entityLegalName"
-                  type="text"
-                  value={formState.entityLegalName}
-                  onChange={(e) =>
-                    setFormState((s) => ({
-                      ...s,
-                      entityLegalName: e.target.value,
-                    }))
-                  }
-                  className="w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-slate-100 focus:border-emerald-500 focus:outline-none"
-                />
+            {validationNotice && (
+              <div
+                role="alert"
+                data-testid="form-validation-alert"
+                className="mb-4 rounded-lg border border-rose-500/40 bg-rose-500/10 px-3 py-2 text-xs text-rose-300"
+              >
+                {validationNotice}
               </div>
+            )}
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <form onSubmit={handleSaveDraft} className="space-y-4" noValidate>
+              {/* Section 1: Entity & Facility Sizing */}
+              <div
+                data-auragen-section="entity_and_facility"
+                data-auragen-section-index="1"
+                className="space-y-4"
+              >
                 <div>
                   <label
-                    htmlFor="requestedFacilityUsd"
+                    htmlFor="entityLegalName"
                     className="block text-xs font-medium text-slate-300 mb-1"
                   >
-                    Requested Facility (USD)
+                    Synthetic Entity Legal Name
                   </label>
                   <input
-                    id="requestedFacilityUsd"
-                    type="number"
-                    value={formState.requestedFacilityUsd}
-                    onChange={(e) =>
-                      setFormState((s) => ({
-                        ...s,
-                        requestedFacilityUsd: Number(e.target.value),
-                      }))
-                    }
-                    className="w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-slate-100 focus:border-emerald-500 focus:outline-none"
-                  />
-                </div>
-
-                <div>
-                  <label
-                    htmlFor="debtServiceCoverageRatio"
-                    className="block text-xs font-medium text-slate-300 mb-1"
-                  >
-                    Target DSCR Ratio
-                  </label>
-                  <input
-                    id="debtServiceCoverageRatio"
+                    id="entityLegalName"
+                    data-auragen-field="entityLegalName"
                     type="text"
-                    value={formState.debtServiceCoverageRatio}
+                    value={formState.entityLegalName}
                     onChange={(e) =>
                       setFormState((s) => ({
                         ...s,
-                        debtServiceCoverageRatio: e.target.value,
+                        entityLegalName: e.target.value,
+                      }))
+                    }
+                    className="w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-slate-100 focus:border-emerald-500 focus:outline-none"
+                  />
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div>
+                    <label
+                      htmlFor="requestedFacilityUsd"
+                      className="block text-xs font-medium text-slate-300 mb-1"
+                    >
+                      Requested Facility (USD)
+                    </label>
+                    <input
+                      id="requestedFacilityUsd"
+                      data-auragen-field="requestedFacilityUsd"
+                      type="number"
+                      value={formState.requestedFacilityUsd}
+                      onChange={(e) =>
+                        setFormState((s) => ({
+                          ...s,
+                          requestedFacilityUsd: Number(e.target.value),
+                        }))
+                      }
+                      className="w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-slate-100 focus:border-emerald-500 focus:outline-none"
+                    />
+                  </div>
+
+                  <div>
+                    <label
+                      htmlFor="debtServiceCoverageRatio"
+                      className="block text-xs font-medium text-slate-300 mb-1"
+                    >
+                      Target DSCR Ratio
+                    </label>
+                    <input
+                      id="debtServiceCoverageRatio"
+                      data-auragen-field="debtServiceCoverageRatio"
+                      type="text"
+                      value={formState.debtServiceCoverageRatio}
+                      onChange={(e) =>
+                        setFormState((s) => ({
+                          ...s,
+                          debtServiceCoverageRatio: e.target.value,
+                        }))
+                      }
+                      className="w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-slate-100 focus:border-emerald-500 focus:outline-none"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {/* Section 2: Collateral & Treasury Metadata */}
+              <div
+                data-auragen-section="collateral_and_treasury"
+                data-auragen-section-index="2"
+                className="space-y-4 pt-2 border-t border-slate-800/60"
+              >
+                <div>
+                  <label
+                    htmlFor="collateralClassification"
+                    className="block text-xs font-medium text-slate-300 mb-1"
+                  >
+                    Collateral Classification
+                  </label>
+                  <input
+                    id="collateralClassification"
+                    data-auragen-field="collateralClassification"
+                    type="text"
+                    value={formState.collateralClassification}
+                    onChange={(e) =>
+                      setFormState((s) => ({
+                        ...s,
+                        collateralClassification: e.target.value,
                       }))
                     }
                     className="w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-slate-100 focus:border-emerald-500 focus:outline-none"
@@ -494,38 +642,39 @@ export function PersistenceWorkbench() {
                 </div>
               </div>
 
-              <div>
-                <label
-                  htmlFor="collateralClassification"
-                  className="block text-xs font-medium text-slate-300 mb-1"
-                >
-                  Collateral Classification
-                </label>
-                <input
-                  id="collateralClassification"
-                  type="text"
-                  value={formState.collateralClassification}
-                  onChange={(e) =>
-                    setFormState((s) => ({
-                      ...s,
-                      collateralClassification: e.target.value,
-                    }))
-                  }
-                  className="w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-slate-100 focus:border-emerald-500 focus:outline-none"
-                />
-              </div>
-
-              <div className="flex items-center justify-between pt-2">
-                <div className="text-[11px] text-slate-400">
-                  {draftMeta
-                    ? `Last saved: ${new Date(draftMeta.updatedAt).toLocaleTimeString()}`
-                    : sessionMeta
-                    ? "No draft saved yet for this session"
-                    : "Awaiting session creation"}
+              {/* Step Navigation & Submit Controls */}
+              <div className="flex flex-wrap items-center justify-between gap-2 pt-2">
+                <div className="flex items-center gap-2">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    disabled={activeFormStep === 1}
+                    onClick={() => handleStepNavigation(1)}
+                    data-auragen-action="wizard-prev-step"
+                    data-testid="wizard-prev-step-btn"
+                  >
+                    <ArrowLeft className="mr-1 h-3.5 w-3.5" />
+                    Previous Section
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    disabled={activeFormStep === 2}
+                    onClick={() => handleStepNavigation(2)}
+                    data-auragen-action="wizard-next-step"
+                    data-testid="wizard-next-step-btn"
+                  >
+                    Next Section
+                    <ArrowRight className="ml-1 h-3.5 w-3.5" />
+                  </Button>
                 </div>
+
                 <Button
                   type="submit"
-                  disabled={isLoading || !sessionId}
+                  disabled={isLoading}
+                  data-auragen-action="submit"
                   data-testid="save-draft-btn"
                 >
                   <Save className="mr-2 h-4 w-4" />
@@ -544,7 +693,7 @@ export function PersistenceWorkbench() {
                 Aggregated Friction Telemetry (friction_events)
               </CardTitle>
               <p className="text-xs text-slate-400 mt-1">
-                Stores 5–10s windowed signal aggregates (no raw mouse or keystroke
+                Stores windowed signal aggregates (no raw mouse or keystroke
                 streams).
               </p>
             </div>
@@ -553,31 +702,44 @@ export function PersistenceWorkbench() {
           <CardContent className="space-y-4">
             <div className="flex flex-wrap gap-2">
               <Button
+                variant="default"
+                size="sm"
+                disabled={isLoading || !sessionId}
+                onClick={() => void handleRecordFrictionPreset("live_telemetry")}
+                data-auragen-action="persist-live-telemetry"
+                data-testid="persist-live-telemetry-btn"
+              >
+                Persist Live Telemetry Snapshot
+              </Button>
+              <Button
                 variant="secondary"
                 size="sm"
                 disabled={isLoading || !sessionId}
                 onClick={() => void handleRecordFrictionPreset("low")}
+                data-auragen-action="log-low-friction"
                 data-testid="log-low-friction-btn"
               >
-                + Log Low Friction (18)
+                + Preset Low (18)
               </Button>
               <Button
                 variant="secondary"
                 size="sm"
                 disabled={isLoading || !sessionId}
                 onClick={() => void handleRecordFrictionPreset("medium")}
+                data-auragen-action="log-medium-friction"
                 data-testid="log-medium-friction-btn"
               >
-                + Log Medium Friction (54)
+                + Preset Medium (54)
               </Button>
               <Button
                 variant="amber"
                 size="sm"
                 disabled={isLoading || !sessionId}
                 onClick={() => void handleRecordFrictionPreset("high")}
+                data-auragen-action="log-high-friction"
                 data-testid="log-high-friction-btn"
               >
-                + Log High Friction (86)
+                + Preset High (86)
               </Button>
             </div>
 

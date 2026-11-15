@@ -14,6 +14,12 @@ import {
   AggregatedSignalsSchema,
   CreateFrictionEventInputSchema,
   FrictionEventRecordSchema,
+  ValidationErrorCategorySchema,
+  ValidationErrorSignalSchema,
+  CursorAnomalyMetricsSchema,
+  TelemetrySignalKindSchema,
+  TelemetrySignalSchema,
+  TelemetrySnapshotSchema,
   HealthResponseSchema,
 } from "../schemas/index.js";
 
@@ -31,6 +37,14 @@ export type FormDraftRecord = z.infer<typeof FormDraftRecordSchema>;
 export type AggregatedSignals = z.infer<typeof AggregatedSignalsSchema>;
 export type CreateFrictionEventInput = z.infer<typeof CreateFrictionEventInputSchema>;
 export type FrictionEventRecord = z.infer<typeof FrictionEventRecordSchema>;
+
+export type ValidationErrorCategory = z.infer<typeof ValidationErrorCategorySchema>;
+export type ValidationErrorSignal = z.infer<typeof ValidationErrorSignalSchema>;
+export type CursorAnomalyMetrics = z.infer<typeof CursorAnomalyMetricsSchema>;
+export type TelemetrySignalKind = z.infer<typeof TelemetrySignalKindSchema>;
+export type TelemetrySignal = z.infer<typeof TelemetrySignalSchema>;
+export type TelemetrySnapshot = z.infer<typeof TelemetrySnapshotSchema>;
+
 export type HealthResponse = z.infer<typeof HealthResponseSchema>;
 
 /**

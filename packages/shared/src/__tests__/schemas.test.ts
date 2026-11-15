@@ -5,6 +5,9 @@ import {
   SessionSchema,
   CreateFrictionEventInputSchema,
   UpsertFormDraftInputSchema,
+  TelemetrySnapshotSchema,
+  ValidationErrorSignalSchema,
+  CursorAnomalyMetricsSchema,
 } from "../index.js";
 
 describe("@auragen/shared Zod schemas", () => {
@@ -108,5 +111,48 @@ describe("@auragen/shared Zod schemas", () => {
       schemaVersion: 1,
     };
     expect(UpsertFormDraftInputSchema.safeParse(unsafeDraft).success).toBe(false);
+  });
+
+  it("validates Day 3 TelemetrySnapshotSchema, ValidationErrorSignalSchema, and CursorAnomalyMetricsSchema", () => {
+    const snapshot = TelemetrySnapshotSchema.parse({
+      observationWindowSeconds: 30,
+      fieldFocusCount: 4,
+      hesitationCount: 1,
+      totalFieldFocusDurationMs: 11200,
+      validationErrors: 2,
+      repeatedClicks: 1,
+      backtracks: 1,
+      cursorAnomalyScore: 0.42,
+    });
+    expect(snapshot.cursorAnomalyScore).toBe(0.42);
+
+    // Rejects cursorAnomalyScore > 1
+    expect(
+      TelemetrySnapshotSchema.safeParse({
+        ...snapshot,
+        cursorAnomalyScore: 1.5,
+      }).success
+    ).toBe(false);
+
+    // Rejects ValidationErrorSignal if extra raw user value property is injected
+    expect(
+      ValidationErrorSignalSchema.safeParse({
+        fieldId: "requestedFacilityUsd",
+        errorCategory: "range",
+        timestamp: Date.now(),
+        errorCount: 1,
+        rawEnteredValue: "999999999",
+      }).success
+    ).toBe(false);
+
+    expect(
+      CursorAnomalyMetricsSchema.safeParse({
+        sampleCount: 12,
+        averageVelocityPxPerMs: 2.1,
+        directionChanges: 5,
+        excessiveMovementBursts: 1,
+        normalizedScore: 0.65,
+      }).success
+    ).toBe(true);
   });
 });
