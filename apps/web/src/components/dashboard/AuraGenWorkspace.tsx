@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useCallback } from "react";
 import {
   Activity,
   Sparkles,
@@ -13,6 +13,7 @@ import {
   Layers,
   Lock,
 } from "lucide-react";
+import type { CognitiveFrictionEvaluation } from "@auragen/shared";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -36,15 +37,55 @@ export function AuraGenWorkspace({
 }: AuraGenWorkspaceProps) {
   const {
     connected,
-    frictionScore,
-    frictionLevel,
-    interactionStatus,
-    adaptationStatus,
+    frictionScore: socketScore,
+    frictionLevel: socketLevel,
+    interactionStatus: socketInteractionStatus,
+    adaptationStatus: socketAdaptationStatus,
     simulateHighFriction,
     resetFriction,
   } = useTelemetrySocket();
 
   const [activeTab, setActiveTab] = useState<ActivePageTab>(initialTab);
+  const [liveEvaluation, setLiveEvaluation] =
+    useState<CognitiveFrictionEvaluation | null>(null);
+  const [simTriggerCount, setSimTriggerCount] = useState<number>(0);
+
+  const handleEvaluationChange = useCallback(
+    (evalResult: CognitiveFrictionEvaluation) => {
+      setLiveEvaluation(evalResult);
+    },
+    []
+  );
+
+  // Merge Day 4 Cognitive Friction Engine score with Day 1 socket simulation fallback
+  const engineScore = liveEvaluation ? Math.round(liveEvaluation.smoothedScore) : 0;
+  const displayedScore = Math.max(engineScore, socketScore);
+  const displayedLevel =
+    displayedScore >= 65
+      ? "high"
+      : displayedScore >= 31
+      ? "medium"
+      : liveEvaluation?.level ?? socketLevel;
+
+  const displayedInteractionStatus =
+    displayedLevel === "high"
+      ? "High Cognitive Load"
+      : displayedLevel === "medium"
+      ? "Elevated Friction"
+      : socketInteractionStatus;
+
+  const displayedAdaptationStatus =
+    liveEvaluation?.thresholdStatus.isEligibleForAdaptation ||
+    socketAdaptationStatus === "Adapting"
+      ? "Adapting"
+      : liveEvaluation?.thresholdStatus.state === "candidate"
+      ? "Analyzing"
+      : socketAdaptationStatus;
+
+  const handleHeroSimulateHighFriction = () => {
+    simulateHighFriction();
+    setSimTriggerCount((c) => c + 1);
+  };
 
   return (
     <div className="min-h-screen flex bg-slate-950 text-slate-100">
@@ -136,21 +177,20 @@ export function AuraGenWorkspace({
             </span>
           </div>
           <p className="text-[11px] leading-relaxed text-slate-500">
-            Real-time WebSocket pipeline & Neon PostgreSQL persistence active.
+            Cognitive Friction Engine &amp; Neon PostgreSQL persistence active.
           </p>
         </div>
       </aside>
 
       {/* Main Content Area */}
       <div className="flex-1 flex flex-col">
-        {/* Top Header */}
         <header className="border-b border-slate-800/80 bg-slate-950/75 backdrop-blur sticky top-0 z-10 px-6 py-4 flex items-center justify-between">
           <div className="flex items-center gap-3">
             <span className="text-sm font-medium text-slate-400">
               AuraGen /
             </span>
             <span className="text-sm font-semibold text-emerald-400">
-              {activeTab === "telemetry" && "Telemetry Overview"}
+              {activeTab === "telemetry" && "Telemetry & Friction Overview"}
               {activeTab === "application" && "Financial Loan Application"}
               {activeTab === "schemas" && "Schema Registry"}
               {activeTab === "guardrails" && "Zero-PII Guardrails"}
@@ -161,13 +201,11 @@ export function AuraGenWorkspace({
               <Radio className="mr-1.5 h-3 w-3" />
               {connected ? "Telemetry Live" : "Local Mode"}
             </Badge>
-            <Badge variant="neutral">Day 3 Milestone</Badge>
+            <Badge variant="neutral">Day 4 Friction Engine</Badge>
           </div>
         </header>
 
-        {/* Centered Page Container */}
         <main className="flex-1 p-6 md:p-10 max-w-6xl w-full mx-auto">
-          {/* PAGE 1: TELEMETRY OVERVIEW */}
           {activeTab === "telemetry" && (
             <div className="space-y-8">
               <div className="flex flex-col md:flex-row md:items-end justify-between gap-6 border-b border-slate-800/80 pb-8">
@@ -180,14 +218,12 @@ export function AuraGenWorkspace({
                     AuraGen Adaptive Control Center
                   </h1>
                   <p className="text-slate-400 text-sm md:text-base leading-relaxed">
-                    Monitors hesitation, repeated clicks, validation loops, and
-                    backtracking on complex financial disclosures—automatically
-                    morphing high-friction forms into guided conversational
-                    steps.
+                    Converts interaction telemetry into a smoothed 0–100
+                    Interaction Friction Score and detects sustained cognitive
+                    friction before synthesizing simplified UI workflows.
                   </p>
                 </div>
 
-                {/* Action Buttons */}
                 <div className="flex flex-wrap items-center gap-3">
                   <Button
                     size="lg"
@@ -199,12 +235,12 @@ export function AuraGenWorkspace({
                   <Button
                     variant="amber"
                     size="lg"
-                    onClick={simulateHighFriction}
+                    onClick={handleHeroSimulateHighFriction}
                   >
                     <Zap className="mr-2 h-4 w-4" />
                     Simulate High Friction
                   </Button>
-                  {frictionScore > 0 && (
+                  {displayedScore > 0 && (
                     <Button
                       variant="outline"
                       size="default"
@@ -225,7 +261,7 @@ export function AuraGenWorkspace({
               >
                 <Card>
                   <CardHeader className="flex flex-row items-center justify-between pb-2">
-                    <CardTitle>Cognitive Friction Score</CardTitle>
+                    <CardTitle>Interaction Friction Score</CardTitle>
                     <Gauge className="h-4 w-4 text-emerald-400" />
                   </CardHeader>
                   <CardContent className="space-y-3">
@@ -234,39 +270,39 @@ export function AuraGenWorkspace({
                         data-testid="friction-score-value"
                         className="text-4xl font-bold tracking-tight text-white"
                       >
-                        {frictionScore}
+                        {displayedScore}
                       </span>
                       <span className="text-xs text-slate-400">
                         / 100 threshold
                       </span>
                       <Badge
                         variant={
-                          frictionLevel === "high"
+                          displayedLevel === "high"
                             ? "danger"
-                            : frictionLevel === "medium"
+                            : displayedLevel === "medium"
                             ? "warning"
                             : "default"
                         }
                         className="ml-auto"
                       >
-                        {frictionLevel.toUpperCase()}
+                        {displayedLevel.toUpperCase()}
                       </Badge>
                     </div>
                     <div className="w-full h-2 rounded-full bg-slate-800 overflow-hidden">
                       <div
                         className={`h-full transition-all duration-500 ${
-                          frictionScore >= 70
+                          displayedScore >= 65
                             ? "bg-rose-500"
-                            : frictionScore >= 40
+                            : displayedScore >= 31
                             ? "bg-amber-400"
                             : "bg-emerald-500"
                         }`}
-                        style={{ width: `${Math.min(100, frictionScore)}%` }}
+                        style={{ width: `${Math.min(100, displayedScore)}%` }}
                       />
                     </div>
                     <p className="text-xs text-slate-400">
-                      Real-time composite index of user hesitation, field
-                      thrashing, and validation errors.
+                      Estimated Cognitive Load heuristic from hesitation, errors,
+                      clicks, backtracking, and pointer jitter.
                     </p>
                   </CardContent>
                 </Card>
@@ -282,11 +318,13 @@ export function AuraGenWorkspace({
                         data-testid="interaction-status-value"
                         className="text-2xl font-semibold text-white"
                       >
-                        {interactionStatus}
+                        {displayedInteractionStatus}
                       </span>
                       <Badge
                         variant={
-                          interactionStatus === "Normal" ? "default" : "warning"
+                          displayedInteractionStatus === "Normal"
+                            ? "default"
+                            : "warning"
                         }
                       >
                         Active Session
@@ -310,54 +348,58 @@ export function AuraGenWorkspace({
                         data-testid="adaptation-status-value"
                         className="text-2xl font-semibold text-white"
                       >
-                        {adaptationStatus}
+                        {displayedAdaptationStatus}
                       </span>
                       <Badge
                         variant={
-                          adaptationStatus === "Waiting" ? "neutral" : "warning"
+                          displayedAdaptationStatus === "Waiting"
+                            ? "neutral"
+                            : "warning"
                         }
                       >
                         Gemini Schema Engine
                       </Badge>
                     </div>
                     <p className="text-xs text-slate-400 leading-relaxed">
-                      Awaits sustained high friction before synthesizing
-                      Zod-validated conversational UI schemas.
+                      Awaits sustained high friction (&ge; 65 for 5s) before
+                      synthesizing Zod-validated conversational UI schemas.
                     </p>
                   </CardContent>
                 </Card>
               </section>
 
-              {/* Integrated Persistence & Telemetry Workbench */}
-              <PersistenceWorkbench />
+              {/* Integrated Day 4 Friction Engine + Day 3 Telemetry + Day 2 Persistence */}
+              <PersistenceWorkbench
+                onFrictionEvaluationChange={handleEvaluationChange}
+                externalSimulationTrigger={simTriggerCount}
+              />
             </div>
           )}
 
-          {/* PAGE 2: DEDICATED FINANCIAL APPLICATION VIEW */}
           {activeTab === "application" && (
             <div className="max-w-5xl mx-auto space-y-6">
               <div className="text-center space-y-2 max-w-2xl mx-auto pb-4">
                 <div className="inline-flex items-center gap-2 rounded-full border border-emerald-500/30 bg-emerald-500/10 px-3.5 py-1 text-xs font-medium text-emerald-300">
                   <FileSpreadsheet className="h-3.5 w-3.5" />
-                  Institutional Credit & Treasury Onboarding
+                  Institutional Credit &amp; Treasury Onboarding
                 </div>
                 <h1 className="text-3xl font-bold tracking-tight text-white">
                   5-Section Financial Loan Application
                 </h1>
                 <p className="text-sm text-slate-400">
                   Complete the 5-step synthetic loan application below. Live
-                  interaction telemetry and Neon PostgreSQL draft persistence
-                  are active.
+                  Cognitive Friction Engine scoring and Neon PostgreSQL draft
+                  persistence are active.
                 </p>
               </div>
-              <PersistenceWorkbench />
+              <PersistenceWorkbench
+                onFrictionEvaluationChange={handleEvaluationChange}
+                externalSimulationTrigger={simTriggerCount}
+              />
             </div>
           )}
 
-          {/* PAGE 3: DEDICATED SCHEMA REGISTRY VIEW */}
           {activeTab === "schemas" && <SchemaRegistryView />}
-
-          {/* PAGE 4: DEDICATED ZERO-PII GUARDRAILS VIEW */}
           {activeTab === "guardrails" && <ZeroPiiGuardrailsView />}
         </main>
       </div>

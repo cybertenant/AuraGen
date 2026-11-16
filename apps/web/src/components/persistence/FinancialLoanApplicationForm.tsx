@@ -143,7 +143,6 @@ export function FinancialLoanApplicationForm({
     trigger,
     getValues,
     reset,
-    watch,
     formState: { errors },
   } = useForm<FinancialLoanApplication>({
     defaultValues: {
@@ -244,7 +243,7 @@ export function FinancialLoanApplicationForm({
     setSubmittedFinal(true);
   };
 
-  const watchedAll = watch();
+  const watchedAll = currentStep === 5 ? getValues() : DEFAULT_LOAN_APPLICATION_VALUES;
 
   return (
     <div className="space-y-5" data-testid="financial-loan-form-root">

@@ -17,12 +17,15 @@ import type {
   FrictionEventRecord,
   FrictionLevel,
   FinancialLoanApplication,
+  CognitiveFrictionEvaluation,
 } from "@auragen/shared";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { useTelemetry } from "@/hooks/useTelemetry";
+import { useCognitiveFrictionEngine } from "@/hooks/useCognitiveFrictionEngine";
 import { TelemetryMonitorPanel } from "@/components/telemetry/TelemetryMonitorPanel";
+import { CognitiveFrictionPanel } from "@/components/friction/CognitiveFrictionPanel";
 import {
   FinancialLoanApplicationForm,
   DEFAULT_LOAN_APPLICATION_VALUES,
@@ -31,7 +34,15 @@ import {
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000";
 export const SESSION_STORAGE_KEY = "auragen_demo_session_id";
 
-export function PersistenceWorkbench() {
+export interface PersistenceWorkbenchProps {
+  onFrictionEvaluationChange?: (evaluation: CognitiveFrictionEvaluation) => void;
+  externalSimulationTrigger?: number;
+}
+
+export function PersistenceWorkbench({
+  onFrictionEvaluationChange,
+  externalSimulationTrigger = 0,
+}: PersistenceWorkbenchProps = {}) {
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [sessionMeta, setSessionMeta] = useState<SessionRecord | null>(null);
   const [initialLoanValues, setInitialLoanValues] = useState<
@@ -58,6 +69,50 @@ export function PersistenceWorkbench() {
     observationWindowSeconds: 30,
   });
 
+  const refreshHistoryOnly = useCallback(async (activeId: string) => {
+    try {
+      const historyRes = await fetch(
+        `${API_BASE}/api/sessions/${activeId}/friction-events?limit=10`
+      );
+      if (historyRes.ok) {
+        const historyData = await historyRes.json();
+        setFrictionHistory(historyData.events || []);
+      }
+    } catch {
+      // Ignore transient network errors during background history refresh
+    }
+  }, []);
+
+  const {
+    evaluation,
+    activeScenarioName,
+    isSimulationActive,
+    persistenceStatus,
+    runSimulationScenario,
+    clearSimulation,
+    resetFrictionEngine,
+  } = useCognitiveFrictionEngine({
+    telemetryMetrics: metrics,
+    sessionId,
+    enablePersistence: true,
+    persistenceIntervalMs: 10000,
+    onSnapshotPersisted: () => {
+      if (sessionId) {
+        void refreshHistoryOnly(sessionId);
+      }
+    },
+  });
+
+  useEffect(() => {
+    onFrictionEvaluationChange?.(evaluation);
+  }, [evaluation, onFrictionEvaluationChange]);
+
+  useEffect(() => {
+    if (externalSimulationTrigger > 0) {
+      runSimulationScenario("high_friction");
+    }
+  }, [externalSimulationTrigger, runSimulationScenario]);
+
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [statusBanner, setStatusBanner] = useState<{
     type: "success" | "error" | "info";
@@ -80,7 +135,6 @@ export function PersistenceWorkbench() {
       const sessionData = await sessionRes.json();
       setSessionMeta(sessionData.session);
 
-      // Load Draft if one exists
       const draftRes = await fetch(
         `${API_BASE}/api/sessions/${activeSessionId}/draft`
       );
@@ -118,7 +172,6 @@ export function PersistenceWorkbench() {
         setDraftMeta(null);
       }
 
-      // Load Friction Event History
       const historyRes = await fetch(
         `${API_BASE}/api/sessions/${activeSessionId}/friction-events?limit=10`
       );
@@ -144,7 +197,6 @@ export function PersistenceWorkbench() {
     }
   }, []);
 
-  // Restore session ID from browser storage on mount (never stores form values in storage)
   useEffect(() => {
     const storedId =
       typeof window !== "undefined"
@@ -292,20 +344,8 @@ export function PersistenceWorkbench() {
         },
       },
       live_telemetry: {
-        frictionScore: Math.min(
-          100,
-          liveSignals.hesitation_count * 15 +
-            liveSignals.validation_errors * 20 +
-            liveSignals.repeated_clicks * 15 +
-            liveSignals.backtracking * 15 +
-            Math.round(liveSignals.cursor_anomaly_score * 0.25)
-        ),
-        frictionLevel:
-          liveSignals.validation_errors + liveSignals.hesitation_count >= 3
-            ? "high"
-            : liveSignals.validation_errors + liveSignals.repeated_clicks >= 1
-            ? "medium"
-            : "low",
+        frictionScore: Math.round(evaluation.smoothedScore),
+        frictionLevel: evaluation.level,
         signals: liveSignals,
       },
     };
@@ -327,13 +367,7 @@ export function PersistenceWorkbench() {
         throw new Error(data.message || "Failed to record friction event");
       }
 
-      const historyRes = await fetch(
-        `${API_BASE}/api/sessions/${sessionId}/friction-events?limit=10`
-      );
-      if (historyRes.ok) {
-        const historyData = await historyRes.json();
-        setFrictionHistory(historyData.events || []);
-      }
+      await refreshHistoryOnly(sessionId);
 
       setStatusBanner({
         type: "success",
@@ -355,9 +389,23 @@ export function PersistenceWorkbench() {
   return (
     <section
       ref={containerRef}
-      aria-label="Day 2 & Day 3 Persistence and Telemetry Workbench"
+      aria-label="Day 2, Day 3 & Day 4 Telemetry, Friction Engine and Persistence Workbench"
       className="space-y-6 pt-4 border-t border-slate-800/80"
     >
+      {/* Day 4 Cognitive Friction Engine & Real-Time Scoring Panel */}
+      <CognitiveFrictionPanel
+        evaluation={evaluation}
+        activeScenarioName={activeScenarioName}
+        isSimulationActive={isSimulationActive}
+        persistenceStatus={persistenceStatus}
+        onRunSimulation={runSimulationScenario}
+        onClearSimulation={clearSimulation}
+        onResetEngine={() => {
+          resetTelemetry();
+          resetFrictionEngine();
+        }}
+      />
+
       {/* Day 3 Live Telemetry Monitor Panel */}
       <TelemetryMonitorPanel
         metrics={metrics}
@@ -368,7 +416,10 @@ export function PersistenceWorkbench() {
         }
         onSimulateBacktrack={() => recordBacktrack("simulated_wizard_backtrack")}
         onSimulateCursorAnomaly={simulateCursorAnomalyBurst}
-        onResetTelemetry={resetTelemetry}
+        onResetTelemetry={() => {
+          resetTelemetry();
+          resetFrictionEngine();
+        }}
       />
 
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 pt-2">
@@ -376,7 +427,7 @@ export function PersistenceWorkbench() {
           <div className="flex items-center gap-2">
             <Database className="h-5 w-5 text-emerald-400" />
             <h2 className="text-xl font-bold text-white">
-              5-Section Financial Loan Application & Neon Persistence
+              5-Section Financial Loan Application &amp; Neon Persistence
             </h2>
           </div>
           <p className="text-xs text-slate-400 mt-1">
@@ -451,12 +502,11 @@ export function PersistenceWorkbench() {
 
       {/* Grid: 5-Section Financial Loan Application + Aggregated Friction History */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-        {/* Left Column (7 cols): Complete 5-Section Financial Loan Application Form */}
         <Card className="lg:col-span-7">
           <CardHeader className="flex flex-row items-center justify-between border-b border-slate-800/80 pb-4">
             <div>
               <CardTitle className="text-slate-100 font-semibold text-base">
-                Institutional & Commercial Financial Loan Application
+                Institutional &amp; Commercial Financial Loan Application
               </CardTitle>
               <p className="text-xs text-slate-400 mt-1">
                 Active Session:{" "}
@@ -493,7 +543,6 @@ export function PersistenceWorkbench() {
           </CardContent>
         </Card>
 
-        {/* Right Column (5 cols): Aggregated Cognitive Friction Events */}
         <Card className="lg:col-span-5">
           <CardHeader className="flex flex-row items-center justify-between border-b border-slate-800/80 pb-4">
             <div>
@@ -516,7 +565,7 @@ export function PersistenceWorkbench() {
                 data-auragen-action="persist-live-telemetry"
                 data-testid="persist-live-telemetry-btn"
               >
-                Persist Live Telemetry Snapshot
+                Persist Engine Score ({Math.round(evaluation.smoothedScore)})
               </Button>
               <Button
                 variant="secondary"
