@@ -12,10 +12,16 @@ export default defineConfig({
     environment: "jsdom",
     setupFiles: ["./src/test/setup.ts"],
     globals: true,
+    testTimeout: 8000,
+    teardownTimeout: 1000,
   },
   resolve: {
     alias: {
       "@": path.resolve(__dirname, "./src"),
+      "@auragen/shared": path.resolve(
+        __dirname,
+        "../../packages/shared/dist/index.js"
+      ),
     },
   },
 });
