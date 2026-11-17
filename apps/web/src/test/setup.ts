@@ -49,6 +49,8 @@ vi.mock("lucide-react", () => {
     "Terminal",
     "Undo2",
     "User",
+    "Wifi",
+    "WifiOff",
     "XCircle",
     "Zap",
   ];

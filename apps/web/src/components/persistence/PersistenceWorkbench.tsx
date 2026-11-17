@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import {
   Database,
   RefreshCw,
@@ -23,8 +23,10 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { useTelemetry } from "@/hooks/useTelemetry";
+import { useSocket } from "@/hooks/useSocket";
 import { useCognitiveFrictionEngine } from "@/hooks/useCognitiveFrictionEngine";
 import { TelemetryMonitorPanel } from "@/components/telemetry/TelemetryMonitorPanel";
+import { ConnectionStatusPanel } from "@/components/telemetry/connection-status";
 import { CognitiveFrictionPanel } from "@/components/friction/CognitiveFrictionPanel";
 import {
   FinancialLoanApplicationForm,
@@ -69,6 +71,18 @@ export function PersistenceWorkbench({
     observationWindowSeconds: 30,
   });
 
+  // Day 5 Real-Time Socket.IO Hook
+  const {
+    connected: socketConnected,
+    connectionStatus,
+    joinedSessionId,
+    sendTelemetry,
+    latestFriction,
+    lastTelemetryAck,
+    socketError,
+    activityLog,
+  } = useSocket(sessionId);
+
   const refreshHistoryOnly = useCallback(async (activeId: string) => {
     try {
       const historyRes = await fetch(
@@ -83,8 +97,14 @@ export function PersistenceWorkbench({
     }
   }, []);
 
+  // Local preview engine (used as immediate local preview and fallback when socket is disconnected)
+  // When socket is connected to a joined session, the backend socket server handles DB persistence.
+  const isServerAuthoritativeActive = Boolean(
+    socketConnected && joinedSessionId
+  );
+
   const {
-    evaluation,
+    evaluation: localEvaluation,
     activeScenarioName,
     isSimulationActive,
     persistenceStatus,
@@ -94,7 +114,7 @@ export function PersistenceWorkbench({
   } = useCognitiveFrictionEngine({
     telemetryMetrics: metrics,
     sessionId,
-    enablePersistence: true,
+    enablePersistence: !isServerAuthoritativeActive,
     persistenceIntervalMs: 10000,
     onSnapshotPersisted: () => {
       if (sessionId) {
@@ -103,9 +123,75 @@ export function PersistenceWorkbench({
     },
   });
 
+  // Prefer server-authoritative friction calculation when connected and available
+  const authoritativeEvaluation: CognitiveFrictionEvaluation = useMemo(() => {
+    if (isServerAuthoritativeActive && latestFriction && !isSimulationActive) {
+      return {
+        rawScore: latestFriction.rawScore,
+        smoothedScore: latestFriction.smoothedScore,
+        level: latestFriction.level,
+        signals: latestFriction.signals,
+        contributions: latestFriction.contributions,
+        thresholdStatus: latestFriction.thresholdStatus,
+        evaluatedAt: new Date(latestFriction.timestamp).getTime(),
+      };
+    }
+    return localEvaluation;
+  }, [
+    isServerAuthoritativeActive,
+    isSimulationActive,
+    latestFriction,
+    localEvaluation,
+  ]);
+
+  // Refresh Neon history list when backend socket persists a snapshot
   useEffect(() => {
-    onFrictionEvaluationChange?.(evaluation);
-  }, [evaluation, onFrictionEvaluationChange]);
+    if (lastTelemetryAck?.persistedToDatabase && sessionId) {
+      void refreshHistoryOnly(sessionId);
+    }
+  }, [lastTelemetryAck, refreshHistoryOnly, sessionId]);
+
+  // Transmit batched telemetry over Socket.IO when meaningful interaction changes occur or every 5s
+  const lastSentSignatureRef = useRef<string>("");
+  useEffect(() => {
+    if (!socketConnected || !joinedSessionId) return;
+
+    const sig = `${metrics.fieldFocusCount}:${metrics.hesitationCount}:${metrics.validationErrors}:${metrics.repeatedClicks}:${metrics.backtracks}:${metrics.cursorAnomalyScore.toFixed(2)}`;
+    const isInitialZero =
+      metrics.fieldFocusCount === 0 &&
+      metrics.hesitationCount === 0 &&
+      metrics.validationErrors === 0 &&
+      metrics.repeatedClicks === 0 &&
+      metrics.backtracks === 0 &&
+      metrics.cursorAnomalyScore === 0;
+
+    if (!isInitialZero && sig !== lastSentSignatureRef.current) {
+      lastSentSignatureRef.current = sig;
+      sendTelemetry(metrics);
+    }
+  }, [joinedSessionId, metrics, sendTelemetry, socketConnected]);
+
+  useEffect(() => {
+    if (!socketConnected || !joinedSessionId) return;
+    const intervalId = setInterval(() => {
+      const hasActivity =
+        metrics.fieldFocusCount > 0 ||
+        metrics.hesitationCount > 0 ||
+        metrics.validationErrors > 0 ||
+        metrics.repeatedClicks > 0 ||
+        metrics.backtracks > 0 ||
+        metrics.cursorAnomalyScore > 0;
+      if (hasActivity) {
+        sendTelemetry(metrics);
+      }
+    }, 6000);
+
+    return () => clearInterval(intervalId);
+  }, [joinedSessionId, metrics, sendTelemetry, socketConnected]);
+
+  useEffect(() => {
+    onFrictionEvaluationChange?.(authoritativeEvaluation);
+  }, [authoritativeEvaluation, onFrictionEvaluationChange]);
 
   useEffect(() => {
     if (externalSimulationTrigger > 0) {
@@ -344,8 +430,8 @@ export function PersistenceWorkbench({
         },
       },
       live_telemetry: {
-        frictionScore: Math.round(evaluation.smoothedScore),
-        frictionLevel: evaluation.level,
+        frictionScore: Math.round(authoritativeEvaluation.smoothedScore),
+        frictionLevel: authoritativeEvaluation.level,
         signals: liveSignals,
       },
     };
@@ -389,12 +475,21 @@ export function PersistenceWorkbench({
   return (
     <section
       ref={containerRef}
-      aria-label="Day 2, Day 3 & Day 4 Telemetry, Friction Engine and Persistence Workbench"
+      aria-label="Day 2, Day 3, Day 4 & Day 5 Real-Time Telemetry, Friction Engine and Persistence Workbench"
       className="space-y-6 pt-4 border-t border-slate-800/80"
     >
+      {/* Day 5 Socket.IO Connection Status & Live Activity Stream */}
+      <ConnectionStatusPanel
+        connectionStatus={connectionStatus}
+        sessionId={sessionId}
+        lastTelemetryAck={lastTelemetryAck}
+        socketError={socketError}
+        activityLog={activityLog}
+      />
+
       {/* Day 4 Cognitive Friction Engine & Real-Time Scoring Panel */}
       <CognitiveFrictionPanel
-        evaluation={evaluation}
+        evaluation={authoritativeEvaluation}
         activeScenarioName={activeScenarioName}
         isSimulationActive={isSimulationActive}
         persistenceStatus={persistenceStatus}
@@ -432,8 +527,8 @@ export function PersistenceWorkbench({
           </div>
           <p className="text-xs text-slate-400 mt-1">
             Built with React Hook Form (15 fields across 5 sections),{" "}
-            <code>data-auragen-field</code> telemetry sensors, and Neon{" "}
-            <code>form_drafts</code> persistence.
+            <code>data-auragen-field</code> telemetry sensors, Socket.IO batch
+            streaming, and Neon <code>form_drafts</code> persistence.
           </p>
         </div>
 
@@ -565,7 +660,7 @@ export function PersistenceWorkbench({
                 data-auragen-action="persist-live-telemetry"
                 data-testid="persist-live-telemetry-btn"
               >
-                Persist Engine Score ({Math.round(evaluation.smoothedScore)})
+                Persist Engine Score ({Math.round(authoritativeEvaluation.smoothedScore)})
               </Button>
               <Button
                 variant="secondary"
