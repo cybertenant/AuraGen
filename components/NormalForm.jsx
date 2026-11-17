@@ -21,6 +21,20 @@ const SHORT_LABELS = {
   review: "Review",
 };
 
+function formatTime(milliseconds) {
+  const seconds = Math.floor(milliseconds / 1000);
+  const remainingMs = milliseconds % 1000;
+
+  if (seconds < 60) {
+    return `${seconds}.${Math.floor(remainingMs / 100)} seconds`;
+  }
+
+  const minutes = Math.floor(seconds / 60);
+  const remainingSeconds = seconds % 60;
+
+  return `${minutes}m ${remainingSeconds}s`;
+}
+
 function SuccessMessage({ submission, name, onReset }) {
   const firstName = name ? name.trim().split(/\s+/)[0] : "";
 
@@ -187,27 +201,101 @@ export default function NormalForm() {
 
         {body}
 
-        {/* AuraGen Field Tracking */}
-        <div className="mt-6 rounded-lg border border-slate-200 bg-slate-50 p-4">
-          <h3 className="mb-3 font-semibold text-slate-800">
+        {/* AuraGen Advanced Field Tracking */}
+        <div className="mt-6 rounded-xl border border-blue-200 bg-slate-50 p-5">
+          <h3 className="mb-4 text-lg font-semibold text-slate-800">
             AuraGen Field Tracking
           </h3>
 
-          <p className="text-sm text-slate-600">
-            Section: {fieldData.section || "Waiting..."}
-          </p>
+          <div className="mb-4 grid grid-cols-1 gap-3 sm:grid-cols-2">
+            <div className="rounded-lg bg-white p-3">
+              <p className="text-xs text-slate-500">Current Section</p>
+              <p className="font-semibold text-slate-800">
+                {fieldData.section || "Waiting..."}
+              </p>
+            </div>
 
-          <p className="text-sm text-slate-600">
-            Field: {fieldData.field || "Waiting..."}
-          </p>
+            <div className="rounded-lg bg-white p-3">
+              <p className="text-xs text-slate-500">Current Field</p>
+              <p className="font-semibold text-slate-800">
+                {fieldData.field || "Waiting..."}
+              </p>
+            </div>
+          </div>
 
-          <p className="text-sm text-slate-600">
-            Interaction: {fieldData.lastInteraction || "None"}
-          </p>
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+            <div className="rounded-lg bg-white p-3">
+              <p className="text-xs text-slate-500">Focus Count</p>
+              <p className="text-xl font-bold text-blue-600">
+                {fieldData.interactionCount}
+              </p>
+            </div>
 
-          <p className="text-sm text-slate-600">
-            Interaction Count: {fieldData.interactionCount}
-          </p>
+            <div className="rounded-lg bg-white p-3">
+              <p className="text-xs text-slate-500">Typing Count</p>
+              <p className="text-xl font-bold text-blue-600">
+                {fieldData.typingCount}
+              </p>
+            </div>
+
+            <div className="rounded-lg bg-white p-3">
+              <p className="text-xs text-slate-500">Blur Count</p>
+              <p className="text-xl font-bold text-blue-600">
+                {fieldData.blurCount}
+              </p>
+            </div>
+
+            <div className="rounded-lg bg-white p-3">
+              <p className="text-xs text-slate-500">Total Interactions</p>
+              <p className="text-xl font-bold text-blue-600">
+                {fieldData.totalInteractionCount}
+              </p>
+            </div>
+
+            <div className="rounded-lg bg-white p-3">
+              <p className="text-xs text-slate-500">Total Time Spent</p>
+              <p className="text-lg font-bold text-blue-600">
+                {formatTime(fieldData.timeSpentMs)}
+              </p>
+            </div>
+
+            <div className="rounded-lg bg-white p-3">
+              <p className="text-xs text-slate-500">Last Interaction</p>
+              <p className="font-semibold text-slate-800">
+                {fieldData.lastInteraction || "None"}
+              </p>
+            </div>
+          </div>
+
+          <div className="mt-5">
+            <h4 className="mb-2 text-sm font-semibold text-slate-700">
+              Individual Field Time
+            </h4>
+
+            {Object.keys(fieldData.fieldTimes).length === 0 ? (
+              <p className="text-sm text-slate-500">
+                No completed field interactions yet.
+              </p>
+            ) : (
+              <div className="space-y-2">
+                {Object.entries(fieldData.fieldTimes).map(
+                  ([field, duration]) => (
+                    <div
+                      key={field}
+                      className="flex items-center justify-between rounded-lg bg-white px-3 py-2 text-sm"
+                    >
+                      <span className="font-medium text-slate-700">
+                        {field}
+                      </span>
+                      <span className="font-semibold text-blue-600">
+                        {formatTime(duration)}
+                      </span>
+                    </div>
+                  )
+                )}
+              </div>
+            )}
+          </div>
         </div>
       </div>
 
