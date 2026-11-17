@@ -12,6 +12,8 @@ import FinancialInformation from "@/components/FinancialInformation";
 import DocumentUpload from "@/components/DocumentUpload";
 import ApplicationReview from "@/components/ApplicationReview";
 import useFieldTracking from "@/hooks/useFieldTracking";
+import useFrictionEngine from "@/hooks/useFrictionEngine";
+import useCognitiveLoad from "@/hooks/useCognitiveLoad";
 
 const SHORT_LABELS = {
   personal: "Personal",
@@ -86,7 +88,15 @@ function SuccessMessage({ submission, name, onReset }) {
 
 export default function NormalForm() {
   const app = useApplication();
+
+  // Day 5: Field interaction tracking
   const fieldData = useFieldTracking();
+
+  // Day 1–3: Cursor and hesitation tracking
+  const cursorData = useFrictionEngine();
+
+  // Day 6: Cognitive load calculation
+  const cognitiveLoad = useCognitiveLoad(cursorData, fieldData);
 
   const { formData, errors, currentSection, submission } = app;
 
@@ -166,6 +176,20 @@ export default function NormalForm() {
 
   const hasSectionErrors = Object.keys(sectionErrors).length > 0;
 
+  const scoreColor =
+    cognitiveLoad.level === "High"
+      ? "text-red-600"
+      : cognitiveLoad.level === "Moderate"
+        ? "text-amber-600"
+        : "text-emerald-600";
+
+  const scoreBackground =
+    cognitiveLoad.level === "High"
+      ? "bg-red-50 border-red-200"
+      : cognitiveLoad.level === "Moderate"
+        ? "bg-amber-50 border-amber-200"
+        : "bg-emerald-50 border-emerald-200";
+
   return (
     <div className="mx-auto max-w-3xl space-y-6">
       <ProgressIndicator
@@ -201,7 +225,87 @@ export default function NormalForm() {
 
         {body}
 
-        {/* AuraGen Advanced Field Tracking */}
+        {/* Day 6: Cognitive Load Score */}
+        <div className="mt-6 rounded-xl border border-purple-200 bg-white p-5">
+          <h3 className="mb-4 text-lg font-semibold text-slate-800">
+            AuraGen Cognitive Load Analysis
+          </h3>
+
+          <div className={`rounded-xl border p-5 ${scoreBackground}`}>
+            <p className="text-sm font-medium text-slate-600">
+              Estimated Cognitive Load Score
+            </p>
+
+            <div className="mt-2 flex items-end gap-2">
+              <span className={`text-5xl font-bold ${scoreColor}`}>
+                {cognitiveLoad.score}
+              </span>
+              <span className="mb-1 text-sm text-slate-500">/ 100</span>
+            </div>
+
+            <p className={`mt-2 font-semibold ${scoreColor}`}>
+              {cognitiveLoad.level} Interaction Difficulty
+            </p>
+
+            <div className="mt-4 h-3 overflow-hidden rounded-full bg-slate-200">
+              <div
+                className={`h-full rounded-full transition-all duration-300 ${cognitiveLoad.level === "High"
+                    ? "bg-red-500"
+                    : cognitiveLoad.level === "Moderate"
+                      ? "bg-amber-500"
+                      : "bg-emerald-500"
+                  }`}
+                style={{ width: `${cognitiveLoad.score}%` }}
+              />
+            </div>
+          </div>
+
+          <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-3">
+            <div className="rounded-lg bg-slate-50 p-3">
+              <p className="text-xs text-slate-500">
+                Hesitation Score
+              </p>
+              <p className="mt-1 text-xl font-bold text-purple-600">
+                {cognitiveLoad.hesitationScore}/40
+              </p>
+              <p className="mt-1 text-xs text-slate-500">
+                {cursorData.hesitationCount} pauses detected
+              </p>
+            </div>
+
+            <div className="rounded-lg bg-slate-50 p-3">
+              <p className="text-xs text-slate-500">
+                Repeat Visit Score
+              </p>
+              <p className="mt-1 text-xl font-bold text-purple-600">
+                {cognitiveLoad.repeatVisitScore}/30
+              </p>
+              <p className="mt-1 text-xs text-slate-500">
+                {cognitiveLoad.repeatedVisits} repeat visits
+              </p>
+            </div>
+
+            <div className="rounded-lg bg-slate-50 p-3">
+              <p className="text-xs text-slate-500">
+                Time Score
+              </p>
+              <p className="mt-1 text-xl font-bold text-purple-600">
+                {cognitiveLoad.timeScore}/30
+              </p>
+              <p className="mt-1 text-xs text-slate-500">
+                Longest field: {formatTime(cognitiveLoad.maximumFieldTime)}
+              </p>
+            </div>
+          </div>
+
+          <p className="mt-4 text-xs leading-5 text-slate-500">
+            This is an experimental interaction-difficulty estimate based on
+            cursor pauses, repeated field visits, and field time. It is not a
+            validated psychological measurement.
+          </p>
+        </div>
+
+        {/* Advanced Field Tracking */}
         <div className="mt-6 rounded-xl border border-blue-200 bg-slate-50 p-5">
           <h3 className="mb-4 text-lg font-semibold text-slate-800">
             AuraGen Field Tracking

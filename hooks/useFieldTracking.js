@@ -14,6 +14,7 @@ export default function useFieldTracking() {
         lastInteraction: "",
         timeSpentMs: 0,
         fieldTimes: {},
+        fieldFocusCounts: {},
     });
 
     const activeField = useRef(null);
@@ -40,6 +41,8 @@ export default function useFieldTracking() {
             activeField.current = details;
             fieldStartTime.current = performance.now();
 
+            const fieldKey = `${details.section}.${details.field}`;
+
             setFieldData((previous) => ({
                 ...previous,
                 section: details.section,
@@ -48,6 +51,11 @@ export default function useFieldTracking() {
                 totalInteractionCount:
                     previous.totalInteractionCount + 1,
                 lastInteraction: "focus",
+                fieldFocusCounts: {
+                    ...previous.fieldFocusCounts,
+                    [fieldKey]:
+                        (previous.fieldFocusCounts[fieldKey] || 0) + 1,
+                },
             }));
 
             console.log("AuraGen Field Focus:", details);
@@ -89,26 +97,21 @@ export default function useFieldTracking() {
 
             const fieldKey = `${details.section}.${details.field}`;
 
-            setFieldData((previous) => {
-                const updatedFieldTimes = {
+            setFieldData((previous) => ({
+                ...previous,
+                section: details.section,
+                field: details.field,
+                blurCount: previous.blurCount + 1,
+                totalInteractionCount:
+                    previous.totalInteractionCount + 1,
+                lastInteraction: "blur",
+                timeSpentMs: previous.timeSpentMs + duration,
+                fieldTimes: {
                     ...previous.fieldTimes,
                     [fieldKey]:
                         (previous.fieldTimes[fieldKey] || 0) + duration,
-                };
-
-                return {
-                    ...previous,
-                    section: details.section,
-                    field: details.field,
-                    blurCount: previous.blurCount + 1,
-                    totalInteractionCount:
-                        previous.totalInteractionCount + 1,
-                    lastInteraction: "blur",
-                    timeSpentMs:
-                        (previous.timeSpentMs || 0) + duration,
-                    fieldTimes: updatedFieldTimes,
-                };
-            });
+                },
+            }));
 
             activeField.current = null;
             fieldStartTime.current = null;
