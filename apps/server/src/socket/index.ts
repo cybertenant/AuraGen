@@ -1,66 +1,75 @@
 import { Server as HttpServer } from "http";
-import { Server, Socket } from "socket.io";
+import { Server } from "socket.io";
 import {
   ClientToServerEvents,
   ServerToClientEvents,
+  SocketData,
 } from "@auragen/shared";
 import { env } from "../config/env.js";
 import { logger } from "../utils/logger.js";
+import { PersistenceService } from "../services/persistence.service.js";
+import { FrictionSessionService } from "./services/friction-session.service.js";
+import {
+  SocketRateGuard,
+  RateLimitConfig,
+} from "./middleware/socket-validation.js";
+import { registerSessionHandler } from "./handlers/session.handler.js";
+import { registerTelemetryHandler } from "./handlers/telemetry.handler.js";
 
-export function initializeSocketServer(httpServer: HttpServer) {
-  const io = new Server<ClientToServerEvents, ServerToClientEvents>(httpServer, {
+export interface CreateSocketServerOptions {
+  corsOrigin?: string | string[];
+  persistenceService?: PersistenceService;
+  persistIntervalMs?: number;
+  rateLimitConfig?: Partial<RateLimitConfig>;
+}
+
+export function createSocketServer(
+  httpServer: HttpServer,
+  options: CreateSocketServerOptions = {}
+) {
+  const allowedOrigins = options.corsOrigin ??
+    env.CORS_ORIGIN.split(",").map((o) => o.trim());
+
+  const io = new Server<
+    ClientToServerEvents,
+    ServerToClientEvents,
+    Record<string, never>,
+    SocketData
+  >(httpServer, {
     cors: {
-      origin: env.CORS_ORIGIN,
+      origin: allowedOrigins,
       methods: ["GET", "POST"],
       credentials: true,
     },
+    pingInterval: 10000,
+    pingTimeout: 5000,
+    maxHttpBufferSize: 16384, // 16KB hard cap at transport layer
   });
 
-  io.on(
-    "connection",
-    (socket: Socket<ClientToServerEvents, ServerToClientEvents>) => {
-      logger.info("Client connected to AuraGen Telemetry Socket", {
-        socketId: socket.id,
-      });
-
-      socket.on("telemetry:simulate_high_friction", ({ sessionId }) => {
-        logger.info("Simulated high cognitive friction received", {
-          socketId: socket.id,
-          sessionId,
-        });
-
-        socket.emit("telemetry:acknowledged", {
-          sessionId,
-          score: 88,
-          level: "high",
-          interactionStatus: "High Cognitive Load",
-          adaptationStatus: "Adapting",
-        });
-      });
-
-      socket.on("telemetry:reset_friction", ({ sessionId }) => {
-        logger.info("Resetting cognitive friction state", {
-          socketId: socket.id,
-          sessionId,
-        });
-
-        socket.emit("telemetry:acknowledged", {
-          sessionId,
-          score: 0,
-          level: "low",
-          interactionStatus: "Normal",
-          adaptationStatus: "Waiting",
-        });
-      });
-
-      socket.on("disconnect", (reason) => {
-        logger.info("Client disconnected from AuraGen Telemetry Socket", {
-          socketId: socket.id,
-          reason,
-        });
-      });
-    }
+  const frictionSessionService = new FrictionSessionService(
+    options.persistenceService,
+    options.persistIntervalMs
   );
+  const rateGuard = new SocketRateGuard(options.rateLimitConfig);
 
-  return io;
+  io.on("connection", (socket) => {
+    logger.info("Socket.IO client connected", { socketId: socket.id });
+
+    registerSessionHandler(socket, frictionSessionService);
+    registerTelemetryHandler(io, socket, frictionSessionService, rateGuard);
+
+    socket.on("disconnect", (reason) => {
+      rateGuard.clearSocket(socket.id);
+      logger.info("Socket.IO client disconnected", {
+        socketId: socket.id,
+        sessionId: socket.data.sessionId ?? null,
+        reason,
+      });
+    });
+  });
+
+  return {
+    io,
+    frictionSessionService,
+  };
 }
