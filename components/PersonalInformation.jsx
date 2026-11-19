@@ -1,11 +1,23 @@
+
 "use client";
 
 import { TextAreaField, TextField } from "@/components/ui/FormControls";
 
 const today = new Date().toISOString().slice(0, 10);
 
-export default function PersonalInformation({ data, errors, onChange, onBlur }) {
-  const shared = { section: "personal", onChange, onBlur };
+export default function PersonalInformation({
+  data,
+  errors,
+  onChange,
+  onBlur,
+  adaptiveGuidance,
+}) {
+  const shared = {
+    section: "personal",
+    onChange,
+    onBlur,
+    adaptiveGuidance,
+  };
 
   return (
     <div className="grid gap-5 sm:grid-cols-2" data-section-root="personal">
@@ -21,6 +33,7 @@ export default function PersonalInformation({ data, errors, onChange, onBlur }) 
           error={errors.fullName}
         />
       </div>
+
       <TextField
         {...shared}
         name="dateOfBirth"
@@ -32,6 +45,7 @@ export default function PersonalInformation({ data, errors, onChange, onBlur }) 
         value={data.dateOfBirth}
         error={errors.dateOfBirth}
       />
+
       <TextField
         {...shared}
         name="phone"
@@ -44,6 +58,7 @@ export default function PersonalInformation({ data, errors, onChange, onBlur }) 
         value={data.phone}
         error={errors.phone}
       />
+
       <div className="sm:col-span-2">
         <TextField
           {...shared}
@@ -57,6 +72,7 @@ export default function PersonalInformation({ data, errors, onChange, onBlur }) 
           error={errors.email}
         />
       </div>
+
       <div className="sm:col-span-2">
         <TextAreaField
           {...shared}
@@ -72,3 +88,4 @@ export default function PersonalInformation({ data, errors, onChange, onBlur }) 
     </div>
   );
 }
+

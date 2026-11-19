@@ -1,4 +1,5 @@
 
+
 "use client";
 
 import { ArrowLeft, ArrowRight, CheckCircle2 } from "lucide-react";
@@ -14,6 +15,7 @@ import ApplicationReview from "@/components/ApplicationReview";
 import useFieldTracking from "@/hooks/useFieldTracking";
 import useFrictionEngine from "@/hooks/useFrictionEngine";
 import useCognitiveLoad from "@/hooks/useCognitiveLoad";
+import useAdaptiveUI from "@/hooks/useAdaptiveUI";
 
 const SHORT_LABELS = {
   personal: "Personal",
@@ -98,6 +100,9 @@ export default function NormalForm() {
   // Day 6: Cognitive load calculation
   const cognitiveLoad = useCognitiveLoad(cursorData, fieldData);
 
+  // Day 7: Adaptive UI guidance
+  const adaptiveUI = useAdaptiveUI(cognitiveLoad, fieldData);
+
   const { formData, errors, currentSection, submission } = app;
 
   if (submission) {
@@ -131,6 +136,7 @@ export default function NormalForm() {
     errors: sectionErrors,
     onChange: (name, value) => app.updateField(currentSection, name, value),
     onBlur: (name) => app.blurField(currentSection, name),
+    adaptiveGuidance: adaptiveUI,
   };
 
   let body = null;
@@ -250,10 +256,10 @@ export default function NormalForm() {
             <div className="mt-4 h-3 overflow-hidden rounded-full bg-slate-200">
               <div
                 className={`h-full rounded-full transition-all duration-300 ${cognitiveLoad.level === "High"
-                    ? "bg-red-500"
-                    : cognitiveLoad.level === "Moderate"
-                      ? "bg-amber-500"
-                      : "bg-emerald-500"
+                  ? "bg-red-500"
+                  : cognitiveLoad.level === "Moderate"
+                    ? "bg-amber-500"
+                    : "bg-emerald-500"
                   }`}
                 style={{ width: `${cognitiveLoad.score}%` }}
               />
@@ -262,9 +268,7 @@ export default function NormalForm() {
 
           <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-3">
             <div className="rounded-lg bg-slate-50 p-3">
-              <p className="text-xs text-slate-500">
-                Hesitation Score
-              </p>
+              <p className="text-xs text-slate-500">Hesitation Score</p>
               <p className="mt-1 text-xl font-bold text-purple-600">
                 {cognitiveLoad.hesitationScore}/40
               </p>
@@ -274,9 +278,7 @@ export default function NormalForm() {
             </div>
 
             <div className="rounded-lg bg-slate-50 p-3">
-              <p className="text-xs text-slate-500">
-                Repeat Visit Score
-              </p>
+              <p className="text-xs text-slate-500">Repeat Visit Score</p>
               <p className="mt-1 text-xl font-bold text-purple-600">
                 {cognitiveLoad.repeatVisitScore}/30
               </p>
@@ -286,9 +288,7 @@ export default function NormalForm() {
             </div>
 
             <div className="rounded-lg bg-slate-50 p-3">
-              <p className="text-xs text-slate-500">
-                Time Score
-              </p>
+              <p className="text-xs text-slate-500">Time Score</p>
               <p className="mt-1 text-xl font-bold text-purple-600">
                 {cognitiveLoad.timeScore}/30
               </p>
@@ -302,6 +302,31 @@ export default function NormalForm() {
             This is an experimental interaction-difficulty estimate based on
             cursor pauses, repeated field visits, and field time. It is not a
             validated psychological measurement.
+          </p>
+        </div>
+
+        {/* Day 7: Adaptive UI Status */}
+        <div className="mt-6 rounded-xl border border-indigo-200 bg-indigo-50/50 p-5">
+          <h3 className="text-lg font-semibold text-slate-800">
+            AuraGen Adaptive UI
+          </h3>
+
+          <p className="mt-2 text-sm text-slate-600">
+            Current adaptation level:{" "}
+            <span className="font-semibold capitalize text-indigo-700">
+              {adaptiveUI.level}
+            </span>
+          </p>
+
+          <p className="mt-1 text-xs text-slate-500">
+            Active field:{" "}
+            {adaptiveUI.section && adaptiveUI.field
+              ? `${adaptiveUI.section}.${adaptiveUI.field}`
+              : "Waiting for field interaction"}
+          </p>
+
+          <p className="mt-2 text-xs text-slate-500">
+            Field-specific guidance will appear beside the relevant form field.
           </p>
         </div>
 
