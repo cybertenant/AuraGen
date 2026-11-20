@@ -35,9 +35,12 @@ import {
   FrictionUpdatePayloadSchema,
   ServerErrorCodeSchema,
   ServerErrorPayloadSchema,
+  AdaptiveOrchestrationStateSchema,
   FrictionStatePayloadSchema,
   FrictionAlertPayloadSchema,
   AdaptationEligiblePayloadSchema,
+  AdaptationDeferredPayloadSchema,
+  FrictionRecoveredPayloadSchema,
 } from "../schemas/socket.schema.js";
 
 export type FrictionLevel = z.infer<typeof FrictionLevelSchema>;
@@ -77,12 +80,16 @@ export type TelemetryAckPayload = z.infer<typeof TelemetryAckPayloadSchema>;
 export type FrictionUpdatePayload = z.infer<typeof FrictionUpdatePayloadSchema>;
 export type ServerErrorCode = z.infer<typeof ServerErrorCodeSchema>;
 export type ServerErrorPayload = z.infer<typeof ServerErrorPayloadSchema>;
+
+export type AdaptiveOrchestrationState = z.infer<typeof AdaptiveOrchestrationStateSchema>;
 export type FrictionStatePayload = z.infer<typeof FrictionStatePayloadSchema>;
 export type FrictionAlertPayload = z.infer<typeof FrictionAlertPayloadSchema>;
 export type AdaptationEligiblePayload = z.infer<typeof AdaptationEligiblePayloadSchema>;
+export type AdaptationDeferredPayload = z.infer<typeof AdaptationDeferredPayloadSchema>;
+export type FrictionRecoveredPayload = z.infer<typeof FrictionRecoveredPayloadSchema>;
 
 /**
- * Socket.IO Strongly Typed Event Contracts (Day 1 + Day 5 + Day 6 Prepared)
+ * Socket.IO Strongly Typed Event Contracts (Day 1 + Day 5 + Day 6 Adaptive Orchestration)
  */
 export interface ServerToClientEvents {
   // Day 1 legacy compatibility event
@@ -100,10 +107,12 @@ export interface ServerToClientEvents {
   "friction:update": (payload: FrictionUpdatePayload) => void;
   "server:error": (payload: ServerErrorPayload) => void;
 
-  // Day 6 Prepared Events
+  // Day 6 Adaptive Friction Threshold Orchestration Events
   "friction:state": (payload: FrictionStatePayload) => void;
   "friction:alert": (payload: FrictionAlertPayload) => void;
   "adaptation:eligible": (payload: AdaptationEligiblePayload) => void;
+  "adaptation:deferred": (payload: AdaptationDeferredPayload) => void;
+  "friction:recovered": (payload: FrictionRecoveredPayload) => void;
 }
 
 export interface ClientToServerEvents {

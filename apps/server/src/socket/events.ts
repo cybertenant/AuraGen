@@ -13,6 +13,8 @@ export const SOCKET_EVENTS = {
     FRICTION_STATE: "friction:state",
     FRICTION_ALERT: "friction:alert",
     ADAPTATION_ELIGIBLE: "adaptation:eligible",
+    ADAPTATION_DEFERRED: "adaptation:deferred",
+    FRICTION_RECOVERED: "friction:recovered",
     LEGACY_ACKNOWLEDGED: "telemetry:acknowledged",
   },
 } as const;

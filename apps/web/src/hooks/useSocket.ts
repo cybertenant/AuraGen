@@ -7,6 +7,11 @@ import type {
   TelemetryBatchPayload,
   ServerErrorPayload,
   SessionReadyPayload,
+  FrictionStatePayload,
+  FrictionAlertPayload,
+  AdaptationEligiblePayload,
+  AdaptationDeferredPayload,
+  FrictionRecoveredPayload,
 } from "@auragen/shared";
 import {
   getOrCreateSocketClient,
@@ -49,6 +54,18 @@ export function useSocket(activeSessionId?: string | null) {
   );
   const [activityLog, setActivityLog] = useState<SocketActivityLogEntry[]>([]);
 
+  // Day 6 Adaptive Friction Threshold Orchestration States
+  const [adaptiveState, setAdaptiveState] =
+    useState<FrictionStatePayload | null>(null);
+  const [latestAdaptiveAlert, setLatestAdaptiveAlert] =
+    useState<FrictionAlertPayload | null>(null);
+  const [lastAdaptationEligible, setLastAdaptationEligible] =
+    useState<AdaptationEligiblePayload | null>(null);
+  const [lastAdaptationDeferred, setLastAdaptationDeferred] =
+    useState<AdaptationDeferredPayload | null>(null);
+  const [lastFrictionRecovered, setLastFrictionRecovered] =
+    useState<FrictionRecoveredPayload | null>(null);
+
   const appendActivityLog = useCallback(
     (
       message: string,
@@ -62,21 +79,17 @@ export function useSocket(activeSessionId?: string | null) {
           message,
           type,
         };
-        return [entry, ...prev].slice(0, 12);
+        return [entry, ...prev].slice(0, 14);
       });
     },
     []
   );
 
-  const joinSession = useCallback(
-    (sessionId: string) => {
-      const socket = socketRef.current;
-      if (!socket || !sessionId) return;
-
-      socket.emit?.("session:join", { sessionId });
-    },
-    []
-  );
+  const joinSession = useCallback((sessionId: string) => {
+    const socket = socketRef.current;
+    if (!socket || !sessionId) return;
+    socket.emit?.("session:join", { sessionId });
+  }, []);
 
   const sendTelemetry = useCallback((batch: TelemetryBatchPayload) => {
     const socket = socketRef.current;
@@ -181,6 +194,46 @@ export function useSocket(activeSessionId?: string | null) {
       );
     };
 
+    const handleFrictionState = (payload: FrictionStatePayload) => {
+      setAdaptiveState(payload);
+    };
+
+    const handleFrictionAlert = (payload: FrictionAlertPayload) => {
+      setLatestAdaptiveAlert(payload);
+      appendActivityLog(
+        `Adaptive alert [${payload.alertType}]: ${payload.message}`,
+        "warning",
+        payload.timestamp
+      );
+    };
+
+    const handleAdaptationEligible = (payload: AdaptationEligiblePayload) => {
+      setLastAdaptationEligible(payload);
+      appendActivityLog(
+        `ADAPTATION ELIGIBLE triggered (score ${Math.round(payload.frictionScore)}).`,
+        "success",
+        payload.timestamp
+      );
+    };
+
+    const handleAdaptationDeferred = (payload: AdaptationDeferredPayload) => {
+      setLastAdaptationDeferred(payload);
+      appendActivityLog(
+        `Adaptation deferred (${payload.reason}, ${Math.ceil(payload.cooldownRemainingMs / 1000)}s left).`,
+        "warning",
+        payload.timestamp
+      );
+    };
+
+    const handleFrictionRecovered = (payload: FrictionRecoveredPayload) => {
+      setLastFrictionRecovered(payload);
+      appendActivityLog(
+        `Friction recovered below threshold (score ${Math.round(payload.frictionScore)}).`,
+        "success",
+        payload.timestamp
+      );
+    };
+
     const handleServerError = (payload: ServerErrorPayload) => {
       setSocketError(payload);
       if (payload.code === "DATABASE_UNAVAILABLE") {
@@ -199,6 +252,11 @@ export function useSocket(activeSessionId?: string | null) {
     socket.on?.("session:ready", handleSessionReady);
     socket.on?.("telemetry:ack", handleTelemetryAck);
     socket.on?.("friction:update", handleFrictionUpdate);
+    socket.on?.("friction:state", handleFrictionState);
+    socket.on?.("friction:alert", handleFrictionAlert);
+    socket.on?.("adaptation:eligible", handleAdaptationEligible);
+    socket.on?.("adaptation:deferred", handleAdaptationDeferred);
+    socket.on?.("friction:recovered", handleFrictionRecovered);
     socket.on?.("server:error", handleServerError);
 
     return () => {
@@ -208,11 +266,15 @@ export function useSocket(activeSessionId?: string | null) {
       socket.off?.("session:ready", handleSessionReady);
       socket.off?.("telemetry:ack", handleTelemetryAck);
       socket.off?.("friction:update", handleFrictionUpdate);
+      socket.off?.("friction:state", handleFrictionState);
+      socket.off?.("friction:alert", handleFrictionAlert);
+      socket.off?.("adaptation:eligible", handleAdaptationEligible);
+      socket.off?.("adaptation:deferred", handleAdaptationDeferred);
+      socket.off?.("friction:recovered", handleFrictionRecovered);
       socket.off?.("server:error", handleServerError);
     };
   }, [activeSessionId, appendActivityLog]);
 
-  // Automatically join session when activeSessionId becomes available on an open socket
   useEffect(() => {
     const socket = socketRef.current;
     if (
@@ -234,5 +296,10 @@ export function useSocket(activeSessionId?: string | null) {
     lastTelemetryAck,
     socketError,
     activityLog,
+    adaptiveState,
+    latestAdaptiveAlert,
+    lastAdaptationEligible,
+    lastAdaptationDeferred,
+    lastFrictionRecovered,
   };
 }

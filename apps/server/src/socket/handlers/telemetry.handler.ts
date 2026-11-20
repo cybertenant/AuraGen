@@ -54,7 +54,7 @@ export function registerTelemetryHandler(
         return;
       }
 
-      const nowMs = Date.now();
+      const nowMs = frictionSessionService.getClock().now();
       const rateCheck = rateGuard.checkRateAndDuplicate(
         socket.id,
         validation.signature,
@@ -90,7 +90,7 @@ export function registerTelemetryHandler(
         const {
           ack: processedAck,
           frictionUpdate,
-          previousLevel,
+          orchestration,
         } = await frictionSessionService.processTelemetryBatch(
           boundSessionId,
           validation.data,
@@ -98,46 +98,47 @@ export function registerTelemetryHandler(
         );
 
         const roomName = getSessionRoomName(boundSessionId);
+        const { socketPayloads } = orchestration;
 
         // 1. Emit telemetry:ack to sender
         socket.emit(SOCKET_EVENTS.SERVER.TELEMETRY_ACK, processedAck);
         ack?.(processedAck);
 
-        // 2. Broadcast authoritative friction:update to the session's private room
+        // 2. Broadcast authoritative friction:update to the private session room
         io.to(roomName).emit(
           SOCKET_EVENTS.SERVER.FRICTION_UPDATE,
           frictionUpdate
         );
 
-        // 3. Emit Day 6 prepared events (friction:state, friction:alert, adaptation:eligible)
-        io.to(roomName).emit(SOCKET_EVENTS.SERVER.FRICTION_STATE, {
-          sessionId: boundSessionId,
-          state: frictionUpdate.thresholdStatus.state,
-          smoothedScore: frictionUpdate.smoothedScore,
-          level: frictionUpdate.level,
-          timestamp: frictionUpdate.timestamp,
-        });
+        // 3. Emit Day 6 Adaptive Friction Threshold Orchestration events strictly to session room
+        io.to(roomName).emit(
+          SOCKET_EVENTS.SERVER.FRICTION_STATE,
+          socketPayloads.frictionState
+        );
 
-        if (previousLevel !== "high" && frictionUpdate.level === "high") {
-          io.to(roomName).emit(SOCKET_EVENTS.SERVER.FRICTION_ALERT, {
-            sessionId: boundSessionId,
-            alertType: "level_escalated_to_high",
-            smoothedScore: frictionUpdate.smoothedScore,
-            level: frictionUpdate.level,
-            timestamp: frictionUpdate.timestamp,
-          });
+        for (const alert of socketPayloads.frictionAlerts) {
+          io.to(roomName).emit(SOCKET_EVENTS.SERVER.FRICTION_ALERT, alert);
         }
 
-        if (frictionUpdate.thresholdStatus.shouldTriggerAdaptationEvent) {
-          io.to(roomName).emit(SOCKET_EVENTS.SERVER.ADAPTATION_ELIGIBLE, {
-            sessionId: boundSessionId,
-            smoothedScore: frictionUpdate.smoothedScore,
-            sustainedDurationMs:
-              frictionUpdate.thresholdStatus.sustainedDurationMs,
-            cooldownDurationMs:
-              frictionUpdate.thresholdStatus.cooldownRemainingMs,
-            timestamp: frictionUpdate.timestamp,
-          });
+        if (socketPayloads.adaptationEligible) {
+          io.to(roomName).emit(
+            SOCKET_EVENTS.SERVER.ADAPTATION_ELIGIBLE,
+            socketPayloads.adaptationEligible
+          );
+        }
+
+        if (socketPayloads.adaptationDeferred) {
+          io.to(roomName).emit(
+            SOCKET_EVENTS.SERVER.ADAPTATION_DEFERRED,
+            socketPayloads.adaptationDeferred
+          );
+        }
+
+        if (socketPayloads.frictionRecovered) {
+          io.to(roomName).emit(
+            SOCKET_EVENTS.SERVER.FRICTION_RECOVERED,
+            socketPayloads.frictionRecovered
+          );
         }
       } catch (err) {
         logger.error("Unexpected error handling telemetry:batch", {

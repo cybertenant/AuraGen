@@ -28,6 +28,8 @@ vi.mock("lucide-react", () => {
     "EyeOff",
     "FileCheck2",
     "FileSpreadsheet",
+    "FlaskConical",
+    "PauseCircle",
     "Gauge",
     "Info",
     "Landmark",

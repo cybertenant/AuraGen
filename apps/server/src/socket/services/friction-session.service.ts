@@ -9,6 +9,12 @@ import {
   AggregatedSignalsSchema,
 } from "@auragen/shared";
 import { PersistenceService } from "../../services/persistence.service.js";
+import {
+  AdaptiveFrictionOrchestrator,
+  AdaptiveOrchestrationResult,
+} from "../../adaptive/adaptive-orchestrator.js";
+import { AdaptiveThresholdConfig } from "../../adaptive/adaptive.config.js";
+import { Clock, SystemClock } from "../../adaptive/adaptive.types.js";
 import { logger } from "../../utils/logger.js";
 
 interface SessionFrictionContext {
@@ -25,29 +31,41 @@ const MAX_ACTIVE_SESSIONS = 1000;
 const SESSION_TTL_MS = 1000 * 60 * 60; // 1 hour
 const DEFAULT_PERSIST_INTERVAL_MS = 10000; // ~10s
 
-/**
- * Server-Authoritative Per-Session Friction Engine & Throttled Neon Persistence Service.
- *
- * Scaling Note:
- * For this single-instance Node.js architecture, per-session smoothing and threshold state
- * are maintained in a bounded in-memory Map. Horizontal scaling across multiple Node.js instances
- * will require shared session state in Redis and `@socket.io/redis-adapter`.
- */
 export class FrictionSessionService {
   private readonly sessions = new Map<string, SessionFrictionContext>();
   private readonly persistenceService: PersistenceService;
   private readonly persistIntervalMs: number;
+  private readonly adaptiveOrchestrator: AdaptiveFrictionOrchestrator;
+  private readonly clock: Clock;
 
   constructor(
     persistenceService: PersistenceService = new PersistenceService(),
-    persistIntervalMs: number = DEFAULT_PERSIST_INTERVAL_MS
+    persistIntervalMs: number = DEFAULT_PERSIST_INTERVAL_MS,
+    adaptiveOptions: {
+      config?: Partial<AdaptiveThresholdConfig>;
+      clock?: Clock;
+    } = {}
   ) {
     this.persistenceService = persistenceService;
     this.persistIntervalMs = persistIntervalMs;
+    this.clock = adaptiveOptions.clock ?? SystemClock;
+    this.adaptiveOrchestrator = new AdaptiveFrictionOrchestrator({
+      config: adaptiveOptions.config,
+      clock: adaptiveOptions.clock,
+      persistenceService,
+    });
   }
 
   public getPersistenceService(): PersistenceService {
     return this.persistenceService;
+  }
+
+  public getClock(): Clock {
+    return this.clock;
+  }
+
+  public getAdaptiveOrchestrator(): AdaptiveFrictionOrchestrator {
+    return this.adaptiveOrchestrator;
   }
 
   public ensureSessionContext(sessionId: string): SessionFrictionContext {
@@ -68,6 +86,7 @@ export class FrictionSessionService {
     } else {
       ctx.updatedAtMs = Date.now();
     }
+    this.adaptiveOrchestrator.getSessionState(sessionId);
     return ctx;
   }
 
@@ -86,12 +105,9 @@ export class FrictionSessionService {
       ctx.lastPersistedLevel = null;
       ctx.updatedAtMs = Date.now();
     }
+    this.adaptiveOrchestrator.resetSession(sessionId);
   }
 
-  /**
-   * Processes a validated TelemetryBatchPayload using the shared Day 4 CognitiveFrictionEngine,
-   * persists to Neon PostgreSQL when persistence rules match, and returns authoritative payloads.
-   */
   public async processTelemetryBatch(
     sessionId: string,
     batch: TelemetryBatchPayload,
@@ -100,17 +116,37 @@ export class FrictionSessionService {
     ack: TelemetryAckPayload;
     frictionUpdate: FrictionUpdatePayload;
     previousLevel: FrictionLevel | null;
+    orchestration: AdaptiveOrchestrationResult;
   }> {
     const startedPerf = performance.now();
     const ctx = this.ensureSessionContext(sessionId);
     const previousLevel = ctx.lastEvaluation?.level ?? null;
 
+    // 1. Single authoritative scoring source: Day 4 CognitiveFrictionEngine
     const evaluation = ctx.engine.evaluate(batch, nowMs);
     ctx.lastEvaluation = evaluation;
     ctx.updatedAtMs = nowMs;
 
-    const { persistedToDatabase, databaseAvailable } =
-      await this.maybePersistSnapshot(ctx, batch, evaluation, nowMs);
+    // 2. Day 6 Adaptive Friction Threshold Orchestration
+    const orchestration = await this.adaptiveOrchestrator.evaluateSessionScore(
+      sessionId,
+      evaluation.smoothedScore,
+      batch,
+      nowMs
+    );
+
+    // 3. Throttled Neon persistence for regular score snapshots (if transition didn't already write)
+    const snapshotPersist = orchestration.persistedTransition
+      ? {
+          persistedToDatabase: true,
+          databaseAvailable: orchestration.databaseAvailable,
+        }
+      : await this.maybePersistSnapshot(ctx, batch, evaluation, nowMs);
+
+    const databaseAvailable =
+      orchestration.databaseAvailable && snapshotPersist.databaseAvailable;
+    const persistedToDatabase =
+      orchestration.persistedTransition || snapshotPersist.persistedToDatabase;
 
     const processingTimeMs = Number(
       Math.max(0, performance.now() - startedPerf).toFixed(2)
@@ -146,6 +182,7 @@ export class FrictionSessionService {
       ack,
       frictionUpdate,
       previousLevel,
+      orchestration,
     };
   }
 
@@ -157,7 +194,6 @@ export class FrictionSessionService {
   ): Promise<{ persistedToDatabase: boolean; databaseAvailable: boolean }> {
     const roundedScore = Math.round(evaluation.smoothedScore);
 
-    // Do not repeatedly save unchanged scores
     if (
       ctx.lastPersistedScore === roundedScore &&
       ctx.lastPersistedLevel === evaluation.level &&
@@ -166,7 +202,6 @@ export class FrictionSessionService {
       return { persistedToDatabase: false, databaseAvailable: true };
     }
 
-    // Do not save an initial zero reading
     if (roundedScore === 0 && ctx.lastPersistedScore === null) {
       return { persistedToDatabase: false, databaseAvailable: true };
     }
@@ -178,16 +213,12 @@ export class FrictionSessionService {
     const isSignificantScoreDelta =
       ctx.lastPersistedScore !== null &&
       Math.abs(roundedScore - ctx.lastPersistedScore) >= 12;
-    const isHighFrictionAlert =
-      evaluation.thresholdStatus.shouldTriggerAdaptationEvent ||
-      (ctx.lastPersistedLevel !== "high" && evaluation.level === "high");
 
     const shouldPersist =
       ctx.lastPersistedScore === null ||
       elapsedMs >= this.persistIntervalMs ||
       isLevelTransition ||
-      isSignificantScoreDelta ||
-      isHighFrictionAlert;
+      isSignificantScoreDelta;
 
     if (!shouldPersist) {
       return { persistedToDatabase: false, databaseAvailable: true };
@@ -229,6 +260,7 @@ export class FrictionSessionService {
     for (const [id, ctx] of this.sessions.entries()) {
       if (now - ctx.updatedAtMs > SESSION_TTL_MS) {
         this.sessions.delete(id);
+        this.adaptiveOrchestrator.removeSession(id);
       }
     }
   }

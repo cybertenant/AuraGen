@@ -13,6 +13,8 @@ import {
   SocketRateGuard,
   RateLimitConfig,
 } from "./middleware/socket-validation.js";
+import { AdaptiveThresholdConfig } from "../adaptive/adaptive.config.js";
+import { Clock } from "../adaptive/adaptive.types.js";
 import { registerSessionHandler } from "./handlers/session.handler.js";
 import { registerTelemetryHandler } from "./handlers/telemetry.handler.js";
 
@@ -21,6 +23,10 @@ export interface CreateSocketServerOptions {
   persistenceService?: PersistenceService;
   persistIntervalMs?: number;
   rateLimitConfig?: Partial<RateLimitConfig>;
+  adaptiveOptions?: {
+    config?: Partial<AdaptiveThresholdConfig>;
+    clock?: Clock;
+  };
 }
 
 export function createSocketServer(
@@ -43,12 +49,13 @@ export function createSocketServer(
     },
     pingInterval: 10000,
     pingTimeout: 5000,
-    maxHttpBufferSize: 16384, // 16KB hard cap at transport layer
+    maxHttpBufferSize: 16384,
   });
 
   const frictionSessionService = new FrictionSessionService(
     options.persistenceService,
-    options.persistIntervalMs
+    options.persistIntervalMs,
+    options.adaptiveOptions
   );
   const rateGuard = new SocketRateGuard(options.rateLimitConfig);
 
