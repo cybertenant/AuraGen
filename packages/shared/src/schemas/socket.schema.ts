@@ -113,14 +113,29 @@ export const ServerErrorPayloadSchema = z
   .strict();
 
 /**
- * Day 6 Preparation Schemas (Defined now, AI generation not triggered in Day 5)
+ * Day 6 Adaptive Friction Orchestration Event Schemas
  */
+export const AdaptiveOrchestrationStateSchema = z.enum([
+  "MONITORING",
+  "HIGH_FRICTION_CANDIDATE",
+  "ADAPTATION_ELIGIBLE",
+  "COOLDOWN",
+  "RECOVERED",
+]);
+
 export const FrictionStatePayloadSchema = z
   .object({
     sessionId: z.string().uuid(),
-    state: z.enum(["idle", "candidate", "eligible_triggered", "cooldown"]),
-    smoothedScore: z.number().min(0).max(100),
-    level: FrictionLevelSchema,
+    state: AdaptiveOrchestrationStateSchema,
+    frictionScore: z.number().min(0).max(100),
+    frictionLevel: FrictionLevelSchema,
+    durationMs: z.number().nonnegative(),
+    requiredDurationMs: z.number().positive(),
+    cooldownRemainingMs: z.number().nonnegative(),
+    episodeTriggered: z.boolean(),
+    resetReason: z
+      .enum(["none", "recovered_below_threshold", "inactivity_gap_exceeded"])
+      .optional(),
     timestamp: z.string().datetime(),
   })
   .strict();
@@ -128,9 +143,15 @@ export const FrictionStatePayloadSchema = z
 export const FrictionAlertPayloadSchema = z
   .object({
     sessionId: z.string().uuid(),
-    alertType: z.enum(["level_escalated_to_high", "sustained_high_friction"]),
-    smoothedScore: z.number().min(0).max(100),
-    level: FrictionLevelSchema,
+    alertType: z.enum([
+      "candidate_started",
+      "sustained_high_friction",
+      "inactivity_candidate_reset",
+    ]),
+    frictionScore: z.number().min(0).max(100),
+    frictionLevel: FrictionLevelSchema,
+    durationMs: z.number().nonnegative(),
+    message: z.string(),
     timestamp: z.string().datetime(),
   })
   .strict();
@@ -138,9 +159,39 @@ export const FrictionAlertPayloadSchema = z
 export const AdaptationEligiblePayloadSchema = z
   .object({
     sessionId: z.string().uuid(),
-    smoothedScore: z.number().min(0).max(100),
+    eligible: z.literal(true),
+    frictionScore: z.number().min(0).max(100),
+    frictionLevel: FrictionLevelSchema,
+    reason: z.literal("sustained_high_interaction_friction"),
     sustainedDurationMs: z.number().nonnegative(),
     cooldownDurationMs: z.number().nonnegative(),
+    timestamp: z.string().datetime(),
+  })
+  .strict();
+
+export const AdaptationDeferredPayloadSchema = z
+  .object({
+    sessionId: z.string().uuid(),
+    deferred: z.literal(true),
+    frictionScore: z.number().min(0).max(100),
+    frictionLevel: FrictionLevelSchema,
+    reason: z.enum([
+      "cooldown_active",
+      "episode_already_triggered_awaiting_recovery",
+    ]),
+    cooldownRemainingMs: z.number().nonnegative(),
+    timestamp: z.string().datetime(),
+  })
+  .strict();
+
+export const FrictionRecoveredPayloadSchema = z
+  .object({
+    sessionId: z.string().uuid(),
+    recovered: z.literal(true),
+    frictionScore: z.number().min(0).max(100),
+    frictionLevel: FrictionLevelSchema,
+    recoveryThreshold: z.number().min(0).max(100),
+    cooldownRemainingMs: z.number().nonnegative(),
     timestamp: z.string().datetime(),
   })
   .strict();

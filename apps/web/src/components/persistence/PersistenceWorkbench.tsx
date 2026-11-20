@@ -27,6 +27,7 @@ import { useSocket } from "@/hooks/useSocket";
 import { useCognitiveFrictionEngine } from "@/hooks/useCognitiveFrictionEngine";
 import { TelemetryMonitorPanel } from "@/components/telemetry/TelemetryMonitorPanel";
 import { ConnectionStatusPanel } from "@/components/telemetry/connection-status";
+import { AdaptiveOrchestrationPanel } from "@/components/adaptive/AdaptiveOrchestrationPanel";
 import { CognitiveFrictionPanel } from "@/components/friction/CognitiveFrictionPanel";
 import {
   FinancialLoanApplicationForm,
@@ -81,6 +82,9 @@ export function PersistenceWorkbench({
     lastTelemetryAck,
     socketError,
     activityLog,
+    adaptiveState,
+    lastAdaptationEligible,
+    lastFrictionRecovered,
   } = useSocket(sessionId);
 
   const refreshHistoryOnly = useCallback(async (activeId: string) => {
@@ -485,6 +489,19 @@ export function PersistenceWorkbench({
         lastTelemetryAck={lastTelemetryAck}
         socketError={socketError}
         activityLog={activityLog}
+      />
+
+      {/* Day 6 Adaptive Friction Threshold Orchestration Panel */}
+      <AdaptiveOrchestrationPanel
+        serverAdaptiveState={adaptiveState}
+        serverLastEligible={lastAdaptationEligible}
+        serverLastRecovered={lastFrictionRecovered}
+        liveFrictionScore={authoritativeEvaluation.smoothedScore}
+        liveFrictionLevel={authoritativeEvaluation.level}
+        sessionId={sessionId}
+        onDispatchTelemetryBatch={(batch) => {
+          sendTelemetry(batch);
+        }}
       />
 
       {/* Day 4 Cognitive Friction Engine & Real-Time Scoring Panel */}
