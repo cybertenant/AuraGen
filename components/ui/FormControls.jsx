@@ -4,10 +4,31 @@
 import { AlertCircle, Lightbulb } from "lucide-react";
 
 const baseInput =
-  "w-full rounded-lg border bg-white px-3.5 py-2.5 text-sm text-slate-900 placeholder:text-slate-400 shadow-sm transition-colors focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/25";
+  "w-full rounded-lg border bg-white px-3.5 text-slate-900 placeholder:text-slate-400 shadow-sm transition-all focus:outline-none";
 
-const inputClass = (error) =>
-  `${baseInput} ${error ? "border-red-400 bg-red-50/40" : "border-slate-300 hover:border-slate-400"}`;
+const inputClass = (error, adaptiveLevel) => {
+  const sizeClass =
+    adaptiveLevel === "high"
+      ? "py-3.5 text-base"
+      : adaptiveLevel === "moderate"
+        ? "py-3 text-sm"
+        : "py-2.5 text-sm";
+
+  const borderClass = error
+    ? "border-red-400 bg-red-50/40"
+    : adaptiveLevel === "high"
+      ? "border-2 border-slate-400 hover:border-slate-600"
+      : adaptiveLevel === "moderate"
+        ? "border-slate-400 hover:border-slate-500"
+        : "border-slate-300 hover:border-slate-400";
+
+  const focusClass =
+    adaptiveLevel === "high"
+      ? "focus:border-blue-600 focus:ring-4 focus:ring-blue-500/25"
+      : "focus:border-blue-500 focus:ring-2 focus:ring-blue-500/25";
+
+  return `${baseInput} ${sizeClass} ${borderClass} ${focusClass}`;
+};
 
 export function FieldShell({
   id,
@@ -16,6 +37,7 @@ export function FieldShell({
   error,
   hint,
   adaptiveMessage,
+  adaptiveLevel,
   children,
 }) {
   const describedBy = [
@@ -30,7 +52,8 @@ export function FieldShell({
     <div>
       <label
         htmlFor={id}
-        className="mb-1.5 block text-sm font-medium text-slate-700"
+        className={`mb-1.5 block font-medium text-slate-700 ${adaptiveLevel === "high" ? "text-base" : "text-sm"
+          }`}
       >
         {label}
         {required ? (
@@ -110,6 +133,7 @@ export function TextField({
   ...rest
 }) {
   const id = `${section}-${name}`;
+  const adaptiveLevel = adaptiveGuidance?.level || "low";
   const adaptiveMessage = getAdaptiveMessage(
     adaptiveGuidance,
     section,
@@ -124,6 +148,7 @@ export function TextField({
       error={error}
       hint={hint}
       adaptiveMessage={adaptiveMessage}
+      adaptiveLevel={adaptiveLevel}
     >
       {(describedBy) => (
         <div className="relative">
@@ -144,7 +169,8 @@ export function TextField({
             aria-describedby={describedBy}
             onChange={(e) => onChange(name, e.target.value)}
             onBlur={() => onBlur(name)}
-            className={`${inputClass(error)} ${prefix ? "pl-8" : ""}`}
+            className={`${inputClass(error, adaptiveLevel)} ${prefix ? "pl-8" : ""
+              }`}
             {...rest}
           />
         </div>
@@ -168,6 +194,7 @@ export function SelectField({
   adaptiveGuidance,
 }) {
   const id = `${section}-${name}`;
+  const adaptiveLevel = adaptiveGuidance?.level || "low";
   const adaptiveMessage = getAdaptiveMessage(
     adaptiveGuidance,
     section,
@@ -182,6 +209,7 @@ export function SelectField({
       error={error}
       hint={hint}
       adaptiveMessage={adaptiveMessage}
+      adaptiveLevel={adaptiveLevel}
     >
       {(describedBy) => (
         <select
@@ -194,7 +222,7 @@ export function SelectField({
           aria-describedby={describedBy}
           onChange={(e) => onChange(name, e.target.value)}
           onBlur={() => onBlur(name)}
-          className={inputClass(error)}
+          className={inputClass(error, adaptiveLevel)}
         >
           <option value="">{placeholder}</option>
           {options.map((option) => (
@@ -223,6 +251,7 @@ export function TextAreaField({
   ...rest
 }) {
   const id = `${section}-${name}`;
+  const adaptiveLevel = adaptiveGuidance?.level || "low";
   const adaptiveMessage = getAdaptiveMessage(
     adaptiveGuidance,
     section,
@@ -237,6 +266,7 @@ export function TextAreaField({
       error={error}
       hint={hint}
       adaptiveMessage={adaptiveMessage}
+      adaptiveLevel={adaptiveLevel}
     >
       {(describedBy) => (
         <textarea
@@ -250,7 +280,7 @@ export function TextAreaField({
           aria-describedby={describedBy}
           onChange={(e) => onChange(name, e.target.value)}
           onBlur={() => onBlur(name)}
-          className={inputClass(error)}
+          className={inputClass(error, adaptiveLevel)}
           {...rest}
         />
       )}
