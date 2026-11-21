@@ -154,6 +154,7 @@ export default function NormalForm() {
       body = <FinancialInformation {...fieldProps} />;
       break;
 
+
     case "documents":
       body = (
         <DocumentUpload
@@ -161,6 +162,7 @@ export default function NormalForm() {
           errors={sectionErrors}
           onSelect={app.setDocument}
           onRemove={app.removeDocument}
+          adaptiveGuidance={adaptiveUI}
         />
       );
       break;

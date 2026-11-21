@@ -1,10 +1,23 @@
+
 "use client";
 
 import { SelectField, TextField } from "@/components/ui/FormControls";
 import { EMPLOYMENT_TYPES } from "@/lib/fields";
 
-export default function EmploymentInformation({ data, errors, onChange, onBlur }) {
-  const shared = { section: "employment", onChange, onBlur };
+export default function EmploymentInformation({
+  data,
+  errors,
+  onChange,
+  onBlur,
+  adaptiveGuidance,
+}) {
+  const shared = {
+    section: "employment",
+    onChange,
+    onBlur,
+    adaptiveGuidance,
+  };
+
   const isStudent = data.employmentType === "Student";
 
   return (
@@ -20,6 +33,7 @@ export default function EmploymentInformation({ data, errors, onChange, onBlur }
           error={errors.employmentType}
         />
       </div>
+
       <div className="sm:col-span-2">
         <TextField
           {...shared}
@@ -31,6 +45,7 @@ export default function EmploymentInformation({ data, errors, onChange, onBlur }
           error={errors.organization}
         />
       </div>
+
       <TextField
         {...shared}
         name="jobTitle"
@@ -40,6 +55,7 @@ export default function EmploymentInformation({ data, errors, onChange, onBlur }
         value={data.jobTitle}
         error={errors.jobTitle}
       />
+
       <TextField
         {...shared}
         name="yearsExperience"
