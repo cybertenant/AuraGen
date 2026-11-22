@@ -1,3 +1,4 @@
+
 "use client";
 
 import { ArrowLeft, ArrowRight, CheckCircle2 } from "lucide-react";
@@ -102,7 +103,7 @@ export default function NormalForm() {
   // Day 7: Adaptive UI guidance
   const adaptiveUI = useAdaptiveUI(cognitiveLoad, fieldData);
 
-  // Day 10: Validation error tracking
+  // Day 10–11: Validation error and pattern tracking
   const errorData = useErrorTracking(app.errors);
 
   const { formData, errors, currentSection, submission } = app;
@@ -501,6 +502,116 @@ export default function NormalForm() {
           <p className="mt-4 text-xs leading-5 text-slate-500">
             Counts validation error occurrences during this browser session.
             It does not measure the user's actual mental state.
+          </p>
+        </div>
+
+        {/* Day 11: Error Pattern Analysis */}
+        <div className="mt-6 rounded-xl border border-amber-200 bg-amber-50/40 p-5">
+          <h3 className="mb-4 text-lg font-semibold text-slate-800">
+            AuraGen Error Pattern Analysis
+          </h3>
+
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+            <div className="rounded-lg bg-white p-3">
+              <p className="text-xs text-slate-500">
+                Repeated Error Fields
+              </p>
+              <p className="mt-1 text-2xl font-bold text-amber-600">
+                {errorData.repeatedErrorFields.length}
+              </p>
+            </div>
+
+            <div className="rounded-lg bg-white p-3">
+              <p className="text-xs text-slate-500">
+                Most Error-Prone Field
+              </p>
+              <p className="mt-1 text-sm font-bold text-amber-700">
+                {errorData.mostErrorProneField
+                  ? errorData.mostErrorProneField[0]
+                  : "No errors yet"}
+              </p>
+
+              {errorData.mostErrorProneField ? (
+                <p className="mt-1 text-xs text-slate-500">
+                  {errorData.mostErrorProneField[1]} error occurrences
+                </p>
+              ) : null}
+            </div>
+          </div>
+
+          <div className="mt-4">
+            <h4 className="mb-2 text-sm font-semibold text-slate-700">
+              Section-wise Error Analysis
+            </h4>
+
+            {Object.keys(errorData.sectionErrorCounts).length === 0 ? (
+              <p className="text-sm text-slate-500">
+                No section patterns available yet.
+              </p>
+            ) : (
+              <div className="space-y-2">
+                {Object.entries(errorData.sectionErrorCounts).map(
+                  ([section, count]) => (
+                    <div
+                      key={section}
+                      className="flex items-center justify-between rounded-lg bg-white px-3 py-2 text-sm"
+                    >
+                      <span className="font-medium capitalize text-slate-700">
+                        {section}
+                      </span>
+                      <span className="font-semibold text-amber-600">
+                        {count}
+                      </span>
+                    </div>
+                  )
+                )}
+              </div>
+            )}
+          </div>
+
+          <div className="mt-4">
+            <h4 className="mb-2 text-sm font-semibold text-slate-700">
+              Repeated Error Fields
+            </h4>
+
+            {errorData.repeatedErrorFields.length === 0 ? (
+              <p className="text-sm text-slate-500">
+                No repeated field errors detected yet.
+              </p>
+            ) : (
+              <div className="space-y-2">
+                {errorData.repeatedErrorFields.map(([field, count]) => (
+                  <div
+                    key={field}
+                    className="flex items-center justify-between rounded-lg bg-white px-3 py-2 text-sm"
+                  >
+                    <span className="font-medium text-slate-700">
+                      {field}
+                    </span>
+                    <span className="font-semibold text-amber-600">
+                      {count} times
+                    </span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
+          <div className="mt-4 rounded-lg border border-amber-200 bg-white p-3">
+            <p className="text-xs font-semibold text-amber-700">
+              Most Error-Prone Section
+            </p>
+            <p className="mt-1 text-sm text-slate-700">
+              {errorData.mostErrorProneSection
+                ? `${errorData.mostErrorProneSection[0]} (${errorData.mostErrorProneSection[1]} errors)`
+                : "No errors detected yet"}
+            </p>
+          </div>
+
+          <p className="mt-4 text-xs leading-5 text-slate-500">
+            This analysis summarizes validation error patterns during the
+            current browser session. It does not identify the cause of an
+            error or measure a user's actual mental state.
           </p>
         </div>
       </div>
