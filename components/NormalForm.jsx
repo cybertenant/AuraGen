@@ -16,6 +16,7 @@ import useFrictionEngine from "@/hooks/useFrictionEngine";
 import useCognitiveLoad from "@/hooks/useCognitiveLoad";
 import useAdaptiveUI from "@/hooks/useAdaptiveUI";
 import useErrorTracking from "@/hooks/useErrorTracking";
+import useFrictionAnalysis from "@/hooks/useFrictionAnalysis";
 
 const SHORT_LABELS = {
   personal: "Personal",
@@ -105,6 +106,9 @@ export default function NormalForm() {
 
   // Day 10–11: Validation error and pattern tracking
   const errorData = useErrorTracking(app.errors);
+
+  // Day 12: User friction pattern analysis
+  const frictionAnalysis = useFrictionAnalysis(fieldData, errorData);
 
   const { formData, errors, currentSection, submission } = app;
 
@@ -199,6 +203,18 @@ export default function NormalForm() {
       : cognitiveLoad.level === "Moderate"
         ? "bg-amber-50 border-amber-200"
         : "bg-emerald-50 border-emerald-200";
+
+  const frictionLevelColor = (level) => {
+    if (level === "High") return "text-red-600";
+    if (level === "Moderate") return "text-amber-600";
+    return "text-emerald-600";
+  };
+
+  const frictionLevelBackground = (level) => {
+    if (level === "High") return "bg-red-50";
+    if (level === "Moderate") return "bg-amber-50";
+    return "bg-emerald-50";
+  };
 
   return (
     <div className="mx-auto max-w-3xl space-y-6">
@@ -612,6 +628,210 @@ export default function NormalForm() {
             This analysis summarizes validation error patterns during the
             current browser session. It does not identify the cause of an
             error or measure a user's actual mental state.
+          </p>
+        </div>
+
+        {/* Day 12: User Friction Pattern Analysis */}
+        <div className="mt-6 rounded-xl border border-teal-200 bg-teal-50/40 p-5">
+          <h3 className="mb-2 text-lg font-semibold text-slate-800">
+            AuraGen User Friction Analysis
+          </h3>
+
+          <p className="mb-4 text-xs leading-5 text-slate-500">
+            This analysis combines field interaction time, repeated visits,
+            and validation errors to identify fields that may be difficult
+            to complete.
+          </p>
+
+          {/* Most Difficult Field */}
+          <div className="rounded-lg border border-teal-200 bg-white p-4">
+            <p className="text-xs font-semibold text-slate-500">
+              Most Difficult Field
+            </p>
+
+            {frictionAnalysis.mostDifficultField ? (
+              <>
+                <p className="mt-1 text-lg font-bold text-teal-700">
+                  {frictionAnalysis.mostDifficultField[0]}
+                </p>
+
+                <p className="mt-1 text-sm text-slate-600">
+                  Friction Score:{" "}
+                  <span className="font-bold">
+                    {frictionAnalysis.mostDifficultField[1].totalScore}/100
+                  </span>
+                </p>
+
+                <span
+                  className={`mt-2 inline-block rounded-full px-3 py-1 text-xs font-semibold ${frictionLevelBackground(
+                    frictionAnalysis.mostDifficultField[1].level
+                  )} ${frictionLevelColor(
+                    frictionAnalysis.mostDifficultField[1].level
+                  )}`}
+                >
+                  {frictionAnalysis.mostDifficultField[1].level} Friction
+                </span>
+              </>
+            ) : (
+              <p className="mt-2 text-sm text-slate-500">
+                Interact with form fields to generate friction analysis.
+              </p>
+            )}
+          </div>
+
+          {/* Individual Field Friction */}
+          <div className="mt-5">
+            <h4 className="mb-2 text-sm font-semibold text-slate-700">
+              Individual Field Friction Scores
+            </h4>
+
+            {Object.keys(frictionAnalysis.fieldFriction).length === 0 ? (
+              <p className="text-sm text-slate-500">
+                No field friction data available yet.
+              </p>
+            ) : (
+              <div className="space-y-3">
+                {Object.entries(frictionAnalysis.fieldFriction).map(
+                  ([field, data]) => (
+                    <div
+                      key={field}
+                      className="rounded-lg bg-white p-3"
+                    >
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <span className="text-sm font-medium text-slate-700">
+                          {field}
+                        </span>
+
+                        <span
+                          className={`rounded-full px-2.5 py-1 text-xs font-semibold ${frictionLevelBackground(
+                            data.level
+                          )} ${frictionLevelColor(data.level)}`}
+                        >
+                          {data.level}
+                        </span>
+                      </div>
+
+                      <div className="mt-2 flex items-center justify-between text-sm">
+                        <span className="text-slate-500">
+                          Friction Score
+                        </span>
+                        <span className="font-bold text-teal-700">
+                          {data.totalScore}/100
+                        </span>
+                      </div>
+
+                      <div className="mt-2 h-2 overflow-hidden rounded-full bg-slate-100">
+                        <div
+                          className="h-full rounded-full bg-teal-500 transition-all duration-300"
+                          style={{ width: `${data.totalScore}%` }}
+                        />
+                      </div>
+
+                      <div className="mt-3 grid grid-cols-3 gap-2 text-xs">
+                        <div>
+                          <p className="text-slate-500">Time</p>
+                          <p className="font-semibold text-slate-700">
+                            {formatTime(data.timeSpent)}
+                          </p>
+                        </div>
+
+                        <div>
+                          <p className="text-slate-500">Visits</p>
+                          <p className="font-semibold text-slate-700">
+                            {data.visits}
+                          </p>
+                        </div>
+
+                        <div>
+                          <p className="text-slate-500">Errors</p>
+                          <p className="font-semibold text-slate-700">
+                            {data.errors}
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+                  )
+                )}
+              </div>
+            )}
+          </div>
+
+          {/* Section-wise Friction */}
+          <div className="mt-5">
+            <h4 className="mb-2 text-sm font-semibold text-slate-700">
+              Section-wise Friction Analysis
+            </h4>
+
+            {Object.keys(frictionAnalysis.sectionFriction).length === 0 ? (
+              <p className="text-sm text-slate-500">
+                No section friction data available yet.
+              </p>
+            ) : (
+              <div className="space-y-3">
+                {Object.entries(frictionAnalysis.sectionFriction).map(
+                  ([section, data]) => (
+                    <div
+                      key={section}
+                      className="rounded-lg bg-white p-3"
+                    >
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <span className="font-semibold capitalize text-slate-700">
+                          {section}
+                        </span>
+
+                        <span
+                          className={`rounded-full px-2.5 py-1 text-xs font-semibold ${frictionLevelBackground(
+                            data.level
+                          )} ${frictionLevelColor(data.level)}`}
+                        >
+                          {data.level}
+                        </span>
+                      </div>
+
+                      <p className="mt-2 text-sm text-slate-600">
+                        Average Friction Score:{" "}
+                        <span className="font-bold text-teal-700">
+                          {data.averageScore}/100
+                        </span>
+                      </p>
+
+                      <div className="mt-2 h-2 overflow-hidden rounded-full bg-slate-100">
+                        <div
+                          className="h-full rounded-full bg-teal-500 transition-all duration-300"
+                          style={{ width: `${data.averageScore}%` }}
+                        />
+                      </div>
+
+                      <p className="mt-2 text-xs text-slate-500">
+                        {data.fieldCount} tracked fields · {data.totalVisits} visits ·{" "}
+                        {data.totalErrors} errors · {formatTime(data.totalTime)}
+                      </p>
+                    </div>
+                  )
+                )}
+              </div>
+            )}
+          </div>
+
+          {/* Most Difficult Section */}
+          <div className="mt-5 rounded-lg border border-teal-200 bg-white p-4">
+            <p className="text-xs font-semibold text-teal-700">
+              Most Difficult Section
+            </p>
+
+            <p className="mt-1 text-sm font-semibold text-slate-800">
+              {frictionAnalysis.mostDifficultSection
+                ? `${frictionAnalysis.mostDifficultSection[0]} (${frictionAnalysis.mostDifficultSection[1].averageScore}/100)`
+                : "No section data available yet"}
+            </p>
+          </div>
+
+          <p className="mt-4 text-xs leading-5 text-slate-500">
+            Friction scores are experimental indicators based on observed
+            interactions. Longer completion time or repeated visits do not
+            necessarily mean a user is confused. Cursor hesitation is tracked
+            separately at the overall session level and is not assigned to
+            individual fields.
           </p>
         </div>
       </div>
