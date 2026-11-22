@@ -1,5 +1,3 @@
-
-
 "use client";
 
 import { ArrowLeft, ArrowRight, CheckCircle2 } from "lucide-react";
@@ -16,6 +14,7 @@ import useFieldTracking from "@/hooks/useFieldTracking";
 import useFrictionEngine from "@/hooks/useFrictionEngine";
 import useCognitiveLoad from "@/hooks/useCognitiveLoad";
 import useAdaptiveUI from "@/hooks/useAdaptiveUI";
+import useErrorTracking from "@/hooks/useErrorTracking";
 
 const SHORT_LABELS = {
   personal: "Personal",
@@ -103,6 +102,9 @@ export default function NormalForm() {
   // Day 7: Adaptive UI guidance
   const adaptiveUI = useAdaptiveUI(cognitiveLoad, fieldData);
 
+  // Day 10: Validation error tracking
+  const errorData = useErrorTracking(app.errors);
+
   const { formData, errors, currentSection, submission } = app;
 
   if (submission) {
@@ -153,7 +155,6 @@ export default function NormalForm() {
     case "financial":
       body = <FinancialInformation {...fieldProps} />;
       break;
-
 
     case "documents":
       body = (
@@ -258,10 +259,10 @@ export default function NormalForm() {
             <div className="mt-4 h-3 overflow-hidden rounded-full bg-slate-200">
               <div
                 className={`h-full rounded-full transition-all duration-300 ${cognitiveLoad.level === "High"
-                  ? "bg-red-500"
-                  : cognitiveLoad.level === "Moderate"
-                    ? "bg-amber-500"
-                    : "bg-emerald-500"
+                    ? "bg-red-500"
+                    : cognitiveLoad.level === "Moderate"
+                      ? "bg-amber-500"
+                      : "bg-emerald-500"
                   }`}
                 style={{ width: `${cognitiveLoad.score}%` }}
               />
@@ -427,6 +428,80 @@ export default function NormalForm() {
               </div>
             )}
           </div>
+        </div>
+
+        {/* Day 10: Validation Error Tracking */}
+        <div className="mt-6 rounded-xl border border-red-200 bg-red-50/40 p-5">
+          <h3 className="mb-4 text-lg font-semibold text-slate-800">
+            AuraGen Validation Error Monitoring
+          </h3>
+
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+            <div className="rounded-lg bg-white p-3">
+              <p className="text-xs text-slate-500">Total Validation Errors</p>
+              <p className="mt-1 text-2xl font-bold text-red-600">
+                {errorData.totalErrors}
+              </p>
+            </div>
+
+            <div className="rounded-lg bg-white p-3">
+              <p className="text-xs text-slate-500">
+                Fields That Triggered Errors
+              </p>
+              <p className="mt-1 text-2xl font-bold text-red-600">
+                {Object.keys(errorData.fieldErrorCounts).length}
+              </p>
+            </div>
+          </div>
+
+          <div className="mt-4">
+            <h4 className="mb-2 text-sm font-semibold text-slate-700">
+              Field-wise Error Counts
+            </h4>
+
+            {Object.keys(errorData.fieldErrorCounts).length === 0 ? (
+              <p className="text-sm text-slate-500">
+                No validation errors detected yet.
+              </p>
+            ) : (
+              <div className="space-y-2">
+                {Object.entries(errorData.fieldErrorCounts).map(
+                  ([field, count]) => (
+                    <div
+                      key={field}
+                      className="flex items-center justify-between rounded-lg bg-white px-3 py-2 text-sm"
+                    >
+                      <span className="font-medium text-slate-700">
+                        {field}
+                      </span>
+                      <span className="font-semibold text-red-600">
+                        {count}
+                      </span>
+                    </div>
+                  )
+                )}
+              </div>
+            )}
+          </div>
+
+          {errorData.lastError ? (
+            <div className="mt-4 rounded-lg border border-red-200 bg-white p-3">
+              <p className="text-xs font-semibold text-red-600">
+                Last Detected Error
+              </p>
+              <p className="mt-1 text-sm text-slate-700">
+                {errorData.lastError.section}.{errorData.lastError.field}
+              </p>
+              <p className="mt-1 text-xs text-slate-500">
+                {errorData.lastError.message}
+              </p>
+            </div>
+          ) : null}
+
+          <p className="mt-4 text-xs leading-5 text-slate-500">
+            Counts validation error occurrences during this browser session.
+            It does not measure the user's actual mental state.
+          </p>
         </div>
       </div>
 
