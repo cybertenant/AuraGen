@@ -28,6 +28,7 @@ import { useCognitiveFrictionEngine } from "@/hooks/useCognitiveFrictionEngine";
 import { TelemetryMonitorPanel } from "@/components/telemetry/TelemetryMonitorPanel";
 import { ConnectionStatusPanel } from "@/components/telemetry/connection-status";
 import { AdaptiveOrchestrationPanel } from "@/components/adaptive/AdaptiveOrchestrationPanel";
+import type { AdaptiveUISchema } from "@/components/adaptive-ui/types/adaptive-ui.types";
 import { CognitiveFrictionPanel } from "@/components/friction/CognitiveFrictionPanel";
 import {
   FinancialLoanApplicationForm,
@@ -57,6 +58,9 @@ export function PersistenceWorkbench({
   );
 
   const [consentGranted, setConsentGranted] = useState<boolean>(true);
+  // Day 7/8 integration hook: receives validated adaptive schema when Gemini generates UI on Day 8
+  const [adaptiveSchema, setAdaptiveSchema] = useState<AdaptiveUISchema | null>(null);
+  void setAdaptiveSchema;
 
   const {
     containerRef,
@@ -651,6 +655,7 @@ export function PersistenceWorkbench({
                 recordValidationError(fieldId, category)
               }
               onBacktrack={(reason) => recordBacktrack(reason)}
+              adaptiveSchema={adaptiveSchema}
             />
           </CardContent>
         </Card>
