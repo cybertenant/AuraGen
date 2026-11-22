@@ -34,6 +34,7 @@ vi.mock("lucide-react", () => {
     "Info",
     "Landmark",
     "Layers",
+    "LayoutGrid",
     "Loader2",
     "Lock",
     "MousePointerClick",

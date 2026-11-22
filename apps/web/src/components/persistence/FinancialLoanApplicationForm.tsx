@@ -1,7 +1,9 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
-import { useForm } from "react-hook-form";
+import { useForm, FormProvider } from "react-hook-form";
+import { AdaptivePreviewWorkbench } from "@/components/adaptive-ui/preview/AdaptivePreviewWorkbench";
+import type { AdaptiveUISchema } from "@/components/adaptive-ui/types/adaptive-ui.types";
 import {
   User,
   Briefcase,
@@ -125,6 +127,7 @@ export interface FinancialLoanApplicationFormProps {
     category: ValidationErrorCategory
   ) => void;
   onBacktrack?: (reason: string) => void;
+  adaptiveSchema?: AdaptiveUISchema | null;
 }
 
 export function FinancialLoanApplicationForm({
@@ -133,9 +136,19 @@ export function FinancialLoanApplicationForm({
   onSaveDraft,
   onValidationError,
   onBacktrack,
+  adaptiveSchema = null,
 }: FinancialLoanApplicationFormProps) {
   const [currentStep, setCurrentStep] = useState<number>(1);
   const [submittedFinal, setSubmittedFinal] = useState<boolean>(false);
+
+  const methods = useForm<FinancialLoanApplication>({
+    defaultValues: {
+      ...DEFAULT_LOAN_APPLICATION_VALUES,
+      ...initialValues,
+    },
+    shouldUnregister: false,
+    mode: "onBlur",
+  });
 
   const {
     register,
@@ -144,13 +157,7 @@ export function FinancialLoanApplicationForm({
     getValues,
     reset,
     formState: { errors },
-  } = useForm<FinancialLoanApplication>({
-    defaultValues: {
-      ...DEFAULT_LOAN_APPLICATION_VALUES,
-      ...initialValues,
-    },
-    mode: "onTouched",
-  });
+  } = methods;
 
   // Restore saved draft values when Neon draft loads
   useEffect(() => {
@@ -246,7 +253,15 @@ export function FinancialLoanApplicationForm({
   const watchedAll = currentStep === 5 ? getValues() : DEFAULT_LOAN_APPLICATION_VALUES;
 
   return (
-    <div className="space-y-5" data-testid="financial-loan-form-root">
+    <FormProvider {...methods}>
+      <AdaptivePreviewWorkbench
+        externalAdaptiveSchema={adaptiveSchema}
+        disabled={disabled}
+        onSaveDraft={onSaveDraft}
+        onValidationError={onValidationError}
+        onBacktrack={onBacktrack}
+        renderOriginalForm={() => (
+          <div className="space-y-5" data-testid="financial-loan-form-root">
       {/* Progress Header & 5-Section Stepper */}
       <div className="space-y-3">
         <div className="flex items-center justify-between text-xs">
@@ -958,6 +973,9 @@ export function FinancialLoanApplicationForm({
           </div>
         </div>
       </form>
-    </div>
+          </div>
+        )}
+      />
+    </FormProvider>
   );
 }
