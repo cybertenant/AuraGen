@@ -7,7 +7,23 @@ import type {
   FrictionEventRecord,
 } from "@auragen/shared";
 import { getDb, DatabaseUnavailableError } from "../db/index.js";
-import { sessions, formDrafts, frictionEvents } from "../db/schema.js";
+import { sessions, formDrafts, frictionEvents, uiAdaptations } from "../db/schema.js";
+export interface SaveUiAdaptationInput {
+  triggerScore: number;
+  uiSchema: Record<string, unknown>;
+  modelName: string;
+  generationTimeMs: number;
+  status: "generated" | "validated" | "rendered" | "failed";
+}
+export interface SavedUiAdaptationRecord {
+  id: string;
+  sessionId: string;
+  triggerScore: number;
+  status: "generated" | "validated" | "rendered" | "failed";
+  modelName: string | null;
+  generationTimeMs: number | null;
+  createdAt: string;
+}
 
 export interface PersistenceRepository {
   createSession(): Promise<SessionRecord>;
@@ -25,6 +41,10 @@ export interface PersistenceRepository {
     sessionId: string,
     limit: number
   ): Promise<FrictionEventRecord[] | null>;
+  saveUiAdaptation?(
+    sessionId: string,
+    input: SaveUiAdaptationInput
+  ): Promise<SavedUiAdaptationRecord | null>;
 }
 
 function wrapDbError(err: unknown): never {
@@ -228,6 +248,49 @@ export class DrizzlePersistenceRepository implements PersistenceRepository {
         signals: r.signals,
         createdAt: r.createdAt.toISOString(),
       }));
+    } catch (err) {
+      wrapDbError(err);
+    }
+  }
+
+  async saveUiAdaptation(
+    sessionId: string,
+    input: SaveUiAdaptationInput
+  ): Promise<SavedUiAdaptationRecord | null> {
+    try {
+      const db = getDb();
+      const existingSession = await this.getSessionById(sessionId);
+      if (!existingSession) {
+        return null;
+      }
+
+      const now = new Date();
+      const [inserted] = await db
+        .insert(uiAdaptations)
+        .values({
+          sessionId,
+          triggerScore: Math.round(input.triggerScore),
+          uiSchema: input.uiSchema,
+          modelName: input.modelName,
+          generationTimeMs: Math.round(input.generationTimeMs),
+          status: input.status,
+          createdAt: now,
+        })
+        .returning();
+
+      if (!inserted) {
+        throw new Error("Failed to insert ui_adaptations record");
+      }
+
+      return {
+        id: inserted.id,
+        sessionId: inserted.sessionId,
+        triggerScore: inserted.triggerScore,
+        status: inserted.status,
+        modelName: inserted.modelName,
+        generationTimeMs: inserted.generationTimeMs,
+        createdAt: inserted.createdAt.toISOString(),
+      };
     } catch (err) {
       wrapDbError(err);
     }

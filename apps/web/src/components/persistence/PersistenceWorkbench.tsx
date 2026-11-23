@@ -656,6 +656,8 @@ export function PersistenceWorkbench({
               }
               onBacktrack={(reason) => recordBacktrack(reason)}
               adaptiveSchema={adaptiveSchema}
+              sessionId={sessionId}
+              latestFrictionScore={latestFriction?.smoothedScore ?? 0}
             />
           </CardContent>
         </Card>

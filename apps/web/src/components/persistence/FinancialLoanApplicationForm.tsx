@@ -128,6 +128,8 @@ export interface FinancialLoanApplicationFormProps {
   ) => void;
   onBacktrack?: (reason: string) => void;
   adaptiveSchema?: AdaptiveUISchema | null;
+  sessionId?: string | null;
+  latestFrictionScore?: number;
 }
 
 export function FinancialLoanApplicationForm({
@@ -137,6 +139,8 @@ export function FinancialLoanApplicationForm({
   onValidationError,
   onBacktrack,
   adaptiveSchema = null,
+  sessionId = null,
+  latestFrictionScore = 0,
 }: FinancialLoanApplicationFormProps) {
   const [currentStep, setCurrentStep] = useState<number>(1);
   const [submittedFinal, setSubmittedFinal] = useState<boolean>(false);
@@ -255,6 +259,8 @@ export function FinancialLoanApplicationForm({
   return (
     <FormProvider {...methods}>
       <AdaptivePreviewWorkbench
+        sessionId={sessionId}
+        latestFrictionScore={latestFrictionScore}
         externalAdaptiveSchema={adaptiveSchema}
         disabled={disabled}
         onSaveDraft={onSaveDraft}
