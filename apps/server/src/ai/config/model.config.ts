@@ -14,9 +14,9 @@ export function getGeminiModelConfig(
 ): GeminiModelConfig {
   const apiKey = resolveBackendGoogleApiKey();
   return {
-    model: overrideModel || env.GEMINI_MODEL || "gemini-2.5-flash",
+    model: overrideModel || env.GEMINI_MODEL || "gemini-3.5-flash-lite",
     temperature: 0.2,
-    maxOutputTokens: 2048,
+    maxOutputTokens: 4096,
     timeoutMs: env.GEMINI_TIMEOUT_MS,
     maxRetries: 1,
     hasApiKey: Boolean(apiKey),

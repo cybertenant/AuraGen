@@ -8,6 +8,7 @@ import {
   SanitizedFormMetadata,
   TokenUsageSummary,
 } from "../types/ai.types.js";
+import { SanitizedGenerationContext } from "../context/context.types.js";
 
 export class AdaptiveUIAgent {
   constructor(private readonly provider: StructuredUIProvider) {}
@@ -15,6 +16,7 @@ export class AdaptiveUIAgent {
   async run(input: {
     sanitizedMetadata: SanitizedFormMetadata;
     presentationGoal: PresentationGoal;
+    sanitizedContext?: SanitizedGenerationContext;
   }): Promise<{
     rawCandidateSchema: unknown;
     tokenUsage?: TokenUsageSummary;
@@ -23,7 +25,8 @@ export class AdaptiveUIAgent {
   }> {
     const vars = buildAdaptivePromptVariables(
       input.sanitizedMetadata,
-      input.presentationGoal
+      input.presentationGoal,
+      input.sanitizedContext
     );
 
     const formattedMessages = await adaptiveUIPromptTemplate.formatMessages(

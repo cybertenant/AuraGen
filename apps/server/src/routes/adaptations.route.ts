@@ -1,16 +1,23 @@
 import { Router, Request, Response } from "express";
-import { GenerateAdaptationRequestSchema } from "../ai/schemas/generation.schema.js";
-import { generateAdaptiveUI } from "../ai/services/ui-generation.service.js";
+import { GenerateContextualAdaptationRequestSchema } from "../ai/context/context.schema.js";
+import { buildSanitizedGenerationContext } from "../ai/context/context-builder.js";
+import { CONTEXTUAL_SIMULATION_PRESETS } from "../ai/context/context-utils.js";
+import {
+  generateAdaptiveUI,
+  generateContextualAdaptiveUI,
+} from "../ai/services/ui-generation.service.js";
 import { getAIHealthStatus } from "../ai/services/ai-health.service.js";
 import { StructuredUIProvider } from "../ai/providers/gemini.provider.js";
 import {
   DrizzlePersistenceRepository,
   PersistenceRepository,
 } from "../repositories/persistence.repository.js";
+import { FrictionSessionService } from "../socket/services/friction-session.service.js";
 import { logger } from "../utils/logger.js";
 
 export interface CreateAdaptationsRouterOptions {
   persistenceRepository?: PersistenceRepository;
+  frictionSessionService?: FrictionSessionService;
   aiProvider?: StructuredUIProvider;
   maxRequestsPerMinutePerSession?: number;
 }
@@ -21,9 +28,9 @@ export function createAdaptationsRouter(
   const router = Router();
   const repo =
     options?.persistenceRepository ?? new DrizzlePersistenceRepository();
+  const frictionSessionService = options?.frictionSessionService;
   const maxPerMinute = options?.maxRequestsPerMinutePerSession ?? 5;
 
-  // Per-session sliding window rate limiter & in-flight duplicate guard
   const requestTimestampsBySession = new Map<string, number[]>();
   const inFlightSessions = new Set<string>();
 
@@ -31,11 +38,23 @@ export function createAdaptationsRouter(
     return res.status(200).json({
       status: "ok",
       ai: getAIHealthStatus(),
+      contextualPresets: Object.values(CONTEXTUAL_SIMULATION_PRESETS).map(
+        (p) => ({
+          id: p.id,
+          title: p.title,
+          description: p.description,
+          currentSectionId: p.currentSectionId,
+          smoothedScore: p.smoothedScore,
+          frictionLevel: p.frictionLevel,
+        })
+      ),
     });
   });
 
   router.post("/generate", async (req: Request, res: Response) => {
-    const parsed = GenerateAdaptationRequestSchema.safeParse(req.body);
+    const parsed = GenerateContextualAdaptationRequestSchema.safeParse(
+      req.body
+    );
     if (!parsed.success) {
       return res.status(400).json({
         success: false,
@@ -48,9 +67,15 @@ export function createAdaptationsRouter(
       });
     }
 
-    const { sessionId, presentationGoal, triggerScore } = parsed.data;
+    const {
+      sessionId,
+      generationMode,
+      presentationGoal,
+      triggerScore,
+      formContext,
+      simulationScenario,
+    } = parsed.data;
 
-    // 1. Duplicate in-flight protection
     if (inFlightSessions.has(sessionId)) {
       return res.status(409).json({
         success: false,
@@ -60,7 +85,6 @@ export function createAdaptationsRouter(
       });
     }
 
-    // 2. Per-session rate limit check
     const nowMs = Date.now();
     const recent = (requestTimestampsBySession.get(sessionId) ?? []).filter(
       (ts) => nowMs - ts < 60_000
@@ -73,7 +97,6 @@ export function createAdaptationsRouter(
       });
     }
 
-    // 3. Validate active session in Neon
     let sessionExists = false;
     try {
       const session = await repo.getSessionById(sessionId);
@@ -104,11 +127,54 @@ export function createAdaptationsRouter(
     inFlightSessions.add(sessionId);
 
     try {
-      // 4. Invoke LangChain + Gemini generation service (with sanitized metadata only)
-      const result = await generateAdaptiveUI({
-        presentationGoal,
-        provider: options?.aiProvider,
-      });
+      let result;
+      let effectiveTriggerScore = triggerScore ?? 0;
+
+      if (generationMode === "contextual") {
+        const serverTelemetry =
+          frictionSessionService?.getSessionTelemetryContext(sessionId);
+
+        let recentScores: number[] = [];
+        try {
+          const events = await repo.getFrictionEvents(sessionId, 5);
+          if (events) {
+            recentScores = events.map((e) => e.frictionScore);
+          }
+        } catch {
+          // Graceful fallback if history query fails
+        }
+
+        const sanitizedContext = buildSanitizedGenerationContext({
+          sessionId,
+          serverEvaluation: serverTelemetry?.evaluation ?? null,
+          serverFieldMetrics: serverTelemetry?.fieldMetrics ?? [],
+          serverEligibilityReason: serverTelemetry?.eligibilityReason,
+          serverTelemetryUpdatedAtMs: serverTelemetry?.lastBatchAtMs ?? null,
+          recentFrictionScores: recentScores,
+          previousLayout: serverTelemetry?.previousLayout ?? null,
+          clientFormContext: formContext,
+          simulationScenario,
+        });
+
+        effectiveTriggerScore = Math.round(
+          sanitizedContext.friction.smoothedScore
+        );
+
+        result = await generateContextualAdaptiveUI({
+          sanitizedContext,
+          adaptationGoal: presentationGoal,
+          provider: options?.aiProvider,
+        });
+      } else {
+        const standardRes = await generateAdaptiveUI({
+          presentationGoal,
+          provider: options?.aiProvider,
+        });
+        result = {
+          ...standardRes,
+          generationMode: "standard" as const,
+        };
+      }
 
       if (!result.success || !result.schema) {
         const statusCode =
@@ -119,6 +185,8 @@ export function createAdaptationsRouter(
             ? 429
             : result.errorCode === "TIMEOUT"
             ? 504
+            : result.errorCode === "CONTEXT_SANITIZATION_FAILED"
+            ? 400
             : 502;
 
         return res.status(statusCode).json({
@@ -127,7 +195,11 @@ export function createAdaptationsRouter(
         });
       }
 
-      // 5. Save validated schema to Neon `ui_adaptations` with status = "validated"
+      frictionSessionService?.recordGeneratedLayoutMetadata(sessionId, {
+        title: result.schema.title,
+        stepCount: result.schema.steps.length,
+      });
+
       let persisted = false;
       let adaptationId: string | null = null;
       let persistenceError: string | null = null;
@@ -135,7 +207,7 @@ export function createAdaptationsRouter(
       if (repo.saveUiAdaptation) {
         try {
           const saved = await repo.saveUiAdaptation(sessionId, {
-            triggerScore: triggerScore ?? 75,
+            triggerScore: effectiveTriggerScore,
             uiSchema: result.schema as unknown as Record<string, unknown>,
             modelName: result.model,
             generationTimeMs: result.generationTimeMs,

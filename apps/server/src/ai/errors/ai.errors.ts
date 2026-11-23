@@ -63,7 +63,7 @@ export function classifyProviderError(err: unknown): AdaptiveGenerationError {
     lower.includes("not found") ||
     lower.includes("404") ||
     lower.includes("unsupported") ||
-    lower.includes("model")
+    lower.includes("no longer available")
   ) {
     return new AdaptiveGenerationError(
       "UNSUPPORTED_MODEL",

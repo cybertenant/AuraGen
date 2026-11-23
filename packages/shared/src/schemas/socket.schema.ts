@@ -1,3 +1,4 @@
+import { FieldInteractionMetricsSchema } from "./index.js";
 import { z } from "zod";
 import { FrictionLevelSchema } from "./index.js";
 import {
@@ -42,6 +43,7 @@ export const TelemetryBatchPayloadSchema = z
     repeatedClicks: z.number().int().min(0).max(500).default(0),
     backtracks: z.number().int().min(0).max(200).default(0),
     cursorAnomalyScore: z.number().min(0).max(1).default(0),
+    fieldMetrics: z.array(FieldInteractionMetricsSchema).max(25).optional(),
   })
   .strict();
 
