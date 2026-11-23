@@ -6,9 +6,9 @@ import { closeDatabasePool } from "./db/index.js";
 import { logger } from "./utils/logger.js";
 
 const httpServer = http.createServer();
-const { io } = createSocketServer(httpServer);
+const { io, frictionSessionService } = createSocketServer(httpServer);
 
-const app = createApp();
+const app = createApp({ frictionSessionService });
 httpServer.on("request", app);
 
 httpServer.listen(env.PORT, () => {

@@ -309,6 +309,6 @@ describe("Day 8: Live Google Gemini API Integration Test", () => {
       expect(result.validationStatus).toBe("valid");
       expect(result.schema?.steps.length).toBeGreaterThanOrEqual(2);
     },
-    30000
+    60000
   );
 });

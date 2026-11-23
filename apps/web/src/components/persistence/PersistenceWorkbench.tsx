@@ -658,6 +658,7 @@ export function PersistenceWorkbench({
               adaptiveSchema={adaptiveSchema}
               sessionId={sessionId}
               latestFrictionScore={latestFriction?.smoothedScore ?? 0}
+              fieldMetrics={metrics.fieldMetrics ?? []}
             />
           </CardContent>
         </Card>

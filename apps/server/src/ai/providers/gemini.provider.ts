@@ -1,35 +1,138 @@
-import { ChatGoogle } from "@langchain/google";
 import { resolveBackendGoogleApiKey } from "../../config/env.js";
 import { getGeminiModelConfig } from "../config/model.config.js";
 import {
   AdaptiveGenerationError,
   classifyProviderError,
 } from "../errors/ai.errors.js";
-import { GeneratedAdaptiveUISchemaZod } from "../schemas/generation.schema.js";
-import {
-  GeneratedAdaptiveUISchema,
-  PresentationGoal,
-  SanitizedFormMetadata,
-  TokenUsageSummary,
-} from "../types/ai.types.js";
+import { logger } from "../../utils/logger.js";
+
+export interface StructuredProviderInput {
+  systemPrompt: string;
+  humanPrompt: string;
+  timeoutMs?: number;
+  goal?: string;
+  metadata?: unknown;
+}
+
+export interface StructuredProviderResponse {
+  rawOutput: unknown;
+  model?: string;
+  providerType?: "gemini_live" | "test_mock";
+  latencyMs?: number;
+  tokenUsage?: {
+    promptTokens?: number;
+    completionTokens?: number;
+    totalTokens?: number;
+  };
+}
 
 export interface StructuredUIProvider {
   readonly providerType: "gemini_live" | "test_mock";
   readonly modelName: string;
-  generateStructuredSchema(input: {
-    systemPrompt: string;
-    humanPrompt: string;
-    metadata: SanitizedFormMetadata;
-    goal: PresentationGoal;
-  }): Promise<{
-    rawOutput: unknown;
-    tokenUsage?: TokenUsageSummary;
-  }>;
+  generateStructuredSchema(
+    input: StructuredProviderInput
+  ): Promise<StructuredProviderResponse>;
+}
+
+export interface GeminiProviderOptions {
+  apiKey?: string;
+  model?: string;
+  temperature?: number;
+  maxOutputTokens?: number;
+  maxRetries?: number;
+  timeoutMs?: number;
+}
+
+function buildCanonicalTestSchema(input: StructuredProviderInput) {
+  // Extract only the friction context block (before the canonical form metadata block)
+  const frictionSection =
+    input.humanPrompt.split(/CANONICAL|FORM_METADATA|Canonical Form/i)[0] ??
+    input.humanPrompt;
+
+  const isFinancial = /financial_information/i.test(frictionSection);
+  const isEmployment =
+    !isFinancial && /employment_details/i.test(frictionSection);
+
+  const personalStep = {
+    id: "step_personal_details",
+    title: "Personal Information",
+    description: "Applicant contact details.",
+    fields: [
+      { fieldId: "fullName", helperText: "Enter full legal name." },
+      { fieldId: "emailAddress", helperText: "Synthetic contact email." },
+      { fieldId: "phoneNumber", helperText: "Primary synthetic phone number." },
+      { fieldId: "residencyPostalCode", helperText: "Current residential postal code." },
+    ],
+  };
+
+  const employmentStep = {
+    id: isEmployment ? "employment_simplified_guide" : "step_employment_details",
+    title: isEmployment
+      ? "Simplified Employment Verification"
+      : "Employment Details",
+    description: "Current occupation and tenure.",
+    fields: [
+      { fieldId: "employmentStatus", helperText: "Select current work classification." },
+      { fieldId: "employerOrEntityName", helperText: "Legal name of employer or entity." },
+      { fieldId: "yearsInCurrentRole", helperText: "Total years in current position." },
+    ],
+  };
+
+  const financialStep = {
+    id: isFinancial ? "financial_income_focus" : "step_financial_details",
+    title: isFinancial
+      ? "Simplified Financial Overview"
+      : "Financial Information",
+    description: "Guided breakdown of income, housing, debt, and reserves.",
+    fields: [
+      { fieldId: "annualIncome", helperText: "Gross annual income before taxes." },
+      { fieldId: "monthlyHousingOrLeaseCost", helperText: "Monthly rent or mortgage cost." },
+      { fieldId: "existingMonthlyDebtObligations", helperText: "Recurring monthly debt payments." },
+      { fieldId: "liquidReservesUsd", helperText: "Available cash and liquid savings." },
+    ],
+  };
+
+  const loanReviewStep = {
+    id: "step_loan_review",
+    title: "Loan Terms & Declaration",
+    description: "Requested financing terms and synthetic consent.",
+    fields: [
+      { fieldId: "requestedLoanAmount", helperText: "Requested loan principal in USD." },
+      { fieldId: "loanPurpose", helperText: "Primary purpose for this loan." },
+      { fieldId: "repaymentTermMonths", helperText: "Preferred repayment duration in months." },
+      { fieldId: "collateralType", helperText: "Collateral backing type if applicable." },
+      { fieldId: "syntheticDataDeclaration", helperText: "Confirm synthetic test data only." },
+      { fieldId: "termsAndCreditCheckConsent", helperText: "Confirm consent to simulated review." },
+    ],
+  };
+
+  const orderedSteps = isFinancial
+    ? [financialStep, personalStep, employmentStep, loanReviewStep]
+    : isEmployment
+      ? [employmentStep, personalStep, financialStep, loanReviewStep]
+      : [personalStep, employmentStep, financialStep, loanReviewStep];
+
+  return {
+    version: 1 as const,
+    mode: "wizard" as const,
+    title: "Guided Loan Application Wizard",
+    description: "Context-adapted multi-step flow reducing cognitive load.",
+    steps: orderedSteps,
+    navigation: {
+      nextLabel: "Continue",
+      previousLabel: "Back",
+      submitLabel: "Submit Application",
+    },
+    appearance: {
+      density: "comfortable" as const,
+      showProgress: true,
+    },
+  };
 }
 
 /**
- * Production Google Gemini Provider using `@langchain/google` (`ChatGoogle`)
- * with native structured output (`withStructuredOutput`).
+ * Live Google Gemini generation provider using structured JSON output (`responseMimeType: "application/json"`).
+ * Keeps API keys strictly in backend memory and never logs prompts or credentials.
  */
 export class GeminiLangChainProvider implements StructuredUIProvider {
   public readonly providerType = "gemini_live" as const;
@@ -37,148 +140,218 @@ export class GeminiLangChainProvider implements StructuredUIProvider {
   private readonly apiKey: string;
   private readonly temperature: number;
   private readonly maxOutputTokens: number;
-  private readonly timeoutMs: number;
   private readonly maxRetries: number;
+  private readonly defaultTimeoutMs: number;
 
-  constructor(options?: { apiKey?: string; model?: string }) {
-    const config = getGeminiModelConfig(options?.model);
-    const resolvedKey = options?.apiKey ?? resolveBackendGoogleApiKey();
-
-    if (!resolvedKey) {
+  constructor(options: GeminiProviderOptions = {}) {
+    const resolvedKey =
+      options.apiKey !== undefined ? options.apiKey : resolveBackendGoogleApiKey();
+    if (!resolvedKey || resolvedKey.trim().length === 0) {
       throw new AdaptiveGenerationError(
         "MISSING_API_KEY",
-        "Google Gemini API key is not configured on the server (set GOOGLE_API_KEY).",
+        "Google Gemini API key is not configured on the server.",
         503,
         false
       );
     }
 
+    const modelCfg = getGeminiModelConfig(options.model);
     this.apiKey = resolvedKey;
-    this.modelName = config.model;
-    this.temperature = config.temperature;
-    this.maxOutputTokens = config.maxOutputTokens;
-    this.timeoutMs = config.timeoutMs;
-    this.maxRetries = config.maxRetries;
+    this.modelName = modelCfg.model;
+    this.temperature = options.temperature ?? modelCfg.temperature;
+    this.maxOutputTokens = options.maxOutputTokens ?? modelCfg.maxOutputTokens;
+    this.maxRetries = Math.max(options.maxRetries ?? modelCfg.maxRetries, 2);
+    this.defaultTimeoutMs = options.timeoutMs ?? modelCfg.timeoutMs;
   }
 
-  async generateStructuredSchema(input: {
-    systemPrompt: string;
-    humanPrompt: string;
-    metadata: SanitizedFormMetadata;
-    goal: PresentationGoal;
-  }): Promise<{ rawOutput: unknown; tokenUsage?: TokenUsageSummary }> {
-    try {
-      const llm = new ChatGoogle({
-        apiKey: this.apiKey,
-        model: this.modelName,
-        temperature: this.temperature,
-        maxOutputTokens: this.maxOutputTokens,
-        maxRetries: this.maxRetries,
-      });
+  public async generateStructuredSchema(
+    input: StructuredProviderInput
+  ): Promise<StructuredProviderResponse> {
+    const startMs = Date.now();
+    const timeoutMs = input.timeoutMs ?? this.defaultTimeoutMs;
+    const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(
+      this.modelName
+    )}:generateContent?key=${encodeURIComponent(this.apiKey)}`;
 
-      const structuredLlm = llm.withStructuredOutput(
-        GeneratedAdaptiveUISchemaZod,
-        {
-          name: "auragen_adaptive_ui_wizard",
-          includeRaw: true,
+    let lastError: unknown;
+
+    for (let attempt = 0; attempt <= this.maxRetries; attempt++) {
+      try {
+        const response = await fetch(endpoint, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          signal: AbortSignal.timeout(timeoutMs),
+          body: JSON.stringify({
+            systemInstruction: {
+              parts: [{ text: input.systemPrompt }],
+            },
+            contents: [
+              {
+                role: "user",
+                parts: [{ text: input.humanPrompt }],
+              },
+            ],
+            generationConfig: {
+              temperature: this.temperature,
+              maxOutputTokens: this.maxOutputTokens,
+              responseMimeType: "application/json",
+              responseSchema: {
+                type: "OBJECT",
+                required: [
+                  "version",
+                  "mode",
+                  "title",
+                  "steps",
+                  "navigation",
+                  "appearance",
+                ],
+                properties: {
+                  version: { type: "INTEGER" },
+                  mode: { type: "STRING" },
+                  title: { type: "STRING" },
+                  description: { type: "STRING" },
+                  steps: {
+                    type: "ARRAY",
+                    items: {
+                      type: "OBJECT",
+                      required: ["id", "title", "fields"],
+                      properties: {
+                        id: { type: "STRING" },
+                        title: { type: "STRING" },
+                        description: { type: "STRING" },
+                        fields: {
+                          type: "ARRAY",
+                          items: {
+                            type: "OBJECT",
+                            required: ["fieldId"],
+                            properties: {
+                              fieldId: { type: "STRING" },
+                              helperText: { type: "STRING" },
+                              placeholder: { type: "STRING" },
+                            },
+                          },
+                        },
+                      },
+                    },
+                  },
+                  navigation: {
+                    type: "OBJECT",
+                    required: ["nextLabel", "previousLabel", "submitLabel"],
+                    properties: {
+                      nextLabel: { type: "STRING" },
+                      previousLabel: { type: "STRING" },
+                      submitLabel: { type: "STRING" },
+                    },
+                  },
+                  appearance: {
+                    type: "OBJECT",
+                    required: ["density", "showProgress"],
+                    properties: {
+                      density: {
+                        type: "STRING",
+                        enum: ["comfortable", "compact"],
+                      },
+                      showProgress: { type: "BOOLEAN" },
+                    },
+                  },
+                },
+              },
+            },
+          }),
+        });
+
+        if (!response.ok) {
+          const errText = await response.text().catch(() => "");
+          throw new Error(`HTTP ${response.status}: ${errText}`);
         }
-      );
 
-      const response = await structuredLlm.invoke(
-        [
-          { role: "system", content: input.systemPrompt },
-          { role: "user", content: input.humanPrompt },
-        ],
-        {
-          signal: AbortSignal.timeout(this.timeoutMs),
-        }
-      );
-
-      const usage = (
-        response.raw as {
-          usage_metadata?: {
-            input_tokens?: number;
-            output_tokens?: number;
-            total_tokens?: number;
+        const payload = (await response.json()) as {
+          candidates?: Array<{
+            content?: {
+              parts?: Array<{ text?: string }>;
+            };
+          }>;
+          usageMetadata?: {
+            promptTokenCount?: number;
+            candidatesTokenCount?: number;
+            totalTokenCount?: number;
           };
-        }
-      )?.usage_metadata;
+        };
 
-      return {
-        rawOutput: response.parsed,
-        tokenUsage: usage
-          ? {
-              inputTokens: usage.input_tokens,
-              outputTokens: usage.output_tokens,
-              totalTokens: usage.total_tokens,
-            }
-          : undefined,
-      };
-    } catch (err) {
-      throw classifyProviderError(err);
+        const rawText =
+          payload.candidates?.[0]?.content?.parts?.[0]?.text ?? "";
+        const parsedOutput = JSON.parse(rawText);
+
+        return {
+          rawOutput: parsedOutput,
+          model: this.modelName,
+          providerType: this.providerType,
+          latencyMs: Date.now() - startMs,
+          ...(payload.usageMetadata
+            ? {
+                tokenUsage: {
+                  promptTokens: payload.usageMetadata.promptTokenCount,
+                  completionTokens: payload.usageMetadata.candidatesTokenCount,
+                  totalTokens: payload.usageMetadata.totalTokenCount,
+                },
+              }
+            : {}),
+        };
+      } catch (err) {
+        lastError = err;
+        const classified = classifyProviderError(err);
+        if (!classified.isRetryable || attempt >= this.maxRetries) {
+          logger.error("Gemini live structured generation failed", {
+            model: this.modelName,
+            errorCode: classified.code,
+            httpStatus: classified.httpStatus,
+            attempt: attempt + 1,
+          });
+          throw classified;
+        }
+        await new Promise((r) => setTimeout(r, 1500 * (attempt + 1)));
+      }
     }
+
+    throw classifyProviderError(lastError);
   }
 }
 
 /**
- * Explicit Deterministic Test Provider for automated tests when no live API key is used.
- * Clearly tagged as `providerType: "test_mock"` so it is never confused with real Gemini generation.
+ * Deterministic test provider for unit and API integration tests without external network calls.
  */
 export class DeterministicTestUIProvider implements StructuredUIProvider {
   public readonly providerType = "test_mock" as const;
-  public readonly modelName: string;
+  public readonly modelName = "deterministic-test-provider";
+  private readonly customOutput?: unknown | ((input: StructuredProviderInput) => unknown);
+  private readonly forceError?: Error;
 
-  constructor(modelName = "gemini-2.5-flash-test-provider") {
-    this.modelName = modelName;
+  constructor(options?: {
+    customOutput?: unknown | ((input: StructuredProviderInput) => unknown);
+    forceError?: Error;
+  }) {
+    this.customOutput = options?.customOutput;
+    this.forceError = options?.forceError;
   }
 
-  async generateStructuredSchema(input: {
-    systemPrompt: string;
-    humanPrompt: string;
-    metadata: SanitizedFormMetadata;
-    goal: PresentationGoal;
-  }): Promise<{ rawOutput: GeneratedAdaptiveUISchema; tokenUsage?: TokenUsageSummary }> {
-    const bySection = new Map<string, typeof input.metadata.fields[number][]>();
-    for (const f of input.metadata.fields) {
-      const list = bySection.get(f.originalSectionId) ?? [];
-      list.push(f);
-      bySection.set(f.originalSectionId, list);
+  public async generateStructuredSchema(
+    input: StructuredProviderInput
+  ): Promise<StructuredProviderResponse> {
+    const startMs = Date.now();
+    if (this.forceError) {
+      throw this.forceError;
     }
 
-    const steps = Array.from(bySection.entries()).map(([sectionId, fields]) => ({
-      id: sectionId,
-      title: `Guided ${fields[0]?.originalSectionTitle ?? sectionId}`,
-      description: `Simplified step grouping for ${fields.length} required fields.`,
-      fields: fields.map((f) => ({
-        fieldId: f.fieldId,
-        helperText: `Provide your ${f.label.toLowerCase()}.`,
-      })),
-    }));
+    const rawOutput =
+      typeof this.customOutput === "function"
+        ? (this.customOutput as (i: StructuredProviderInput) => unknown)(input)
+        : this.customOutput ?? buildCanonicalTestSchema(input);
 
     return {
-      rawOutput: {
-        version: 1,
-        mode: "wizard",
-        title: "Guided Financial Application Wizard",
-        description:
-          "Generated in deterministic test-provider mode using canonical field metadata.",
-        steps,
-        navigation: {
-          nextLabel: "Continue",
-          previousLabel: "Go back",
-          submitLabel: "Review & Save Draft",
-        },
-        appearance: {
-          density:
-            input.goal === "compact_executive" ? "compact" : "comfortable",
-          showProgress: true,
-        },
-      },
-      tokenUsage: {
-        inputTokens: 320,
-        outputTokens: 410,
-        totalTokens: 730,
-      },
+      rawOutput,
+      model: this.modelName,
+      providerType: this.providerType,
+      latencyMs: Date.now() - startMs,
     };
   }
 }

@@ -201,6 +201,54 @@ export function useTelemetry(options: UseTelemetryOptions = {}) {
       pointerSamplesRef.current
     );
 
+    const perFieldMap = new Map<
+      string,
+      {
+        fieldId: string;
+        focusCount: number;
+        hesitationCount: number;
+        validationErrorCount: number;
+        repeatedInteractionCount: number;
+        totalFocusDurationMs: number;
+      }
+    >();
+
+    const ensureFieldEntry = (id: string) => {
+      let entry = perFieldMap.get(id);
+      if (!entry) {
+        entry = {
+          fieldId: id,
+          focusCount: 0,
+          hesitationCount: 0,
+          validationErrorCount: 0,
+          repeatedInteractionCount: 0,
+          totalFocusDurationMs: 0,
+        };
+        perFieldMap.set(id, entry);
+      }
+      return entry;
+    };
+
+    for (const ev of focusEventsRef.current) {
+      ensureFieldEntry(ev.targetId).focusCount += 1;
+    }
+    for (const dur of focusDurationsRef.current) {
+      ensureFieldEntry(dur.targetId).totalFocusDurationMs += Math.round(
+        dur.durationMs
+      );
+    }
+    for (const hes of hesitationEventsRef.current) {
+      ensureFieldEntry(hes.targetId).hesitationCount += 1;
+    }
+    for (const rep of repeatedClickEventsRef.current) {
+      ensureFieldEntry(rep.targetId).repeatedInteractionCount += 1;
+    }
+    for (const val of validationEventsRef.current) {
+      ensureFieldEntry(val.targetId).validationErrorCount += 1;
+    }
+
+    const fieldMetrics = Array.from(perFieldMap.values());
+
     const nextSnapshot = TelemetrySnapshotSchema.parse({
       observationWindowSeconds,
       fieldFocusCount: focusEventsRef.current.length,
@@ -210,6 +258,7 @@ export function useTelemetry(options: UseTelemetryOptions = {}) {
       repeatedClicks: repeatedClickEventsRef.current.length,
       backtracks: backtrackEventsRef.current.length,
       cursorAnomalyScore,
+      ...(fieldMetrics.length > 0 ? { fieldMetrics } : {}),
     });
 
     setMetrics((prev) => {

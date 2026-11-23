@@ -110,3 +110,37 @@ export const GeneratedAdaptiveUISchemaZod = z
       .strict(),
   })
   .strict();
+
+/**
+ * Clean JSON-Schema-compatible wire schema for LangChain `withStructuredOutput()`.
+ * Strict `.refine()` and 17-field completeness checks run immediately after in `validateGeneratedAdaptiveUI()`.
+ */
+export const GeminiWireAdaptiveUISchemaZod = z.object({
+  version: z.literal(1),
+  mode: z.literal("wizard"),
+  title: z.string(),
+  description: z.string().optional(),
+  steps: z.array(
+    z.object({
+      id: z.string(),
+      title: z.string(),
+      description: z.string().optional(),
+      fields: z.array(
+        z.object({
+          fieldId: z.string(),
+          helperText: z.string().optional(),
+          placeholder: z.string().optional(),
+        })
+      ),
+    })
+  ),
+  navigation: z.object({
+    nextLabel: z.string(),
+    previousLabel: z.string(),
+    submitLabel: z.string(),
+  }),
+  appearance: z.object({
+    density: z.enum(["comfortable", "compact"]),
+    showProgress: z.boolean(),
+  }),
+});

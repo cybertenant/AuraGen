@@ -11,8 +11,8 @@ const EnvSchema = z.object({
   DIRECT_DATABASE_URL: z.string().min(1).optional(),
   GOOGLE_API_KEY: z.string().min(1).optional(),
   GEMINI_API_KEY: z.string().min(1).optional(),
-  GEMINI_MODEL: z.string().min(1).default("gemini-2.5-flash"),
-  GEMINI_TIMEOUT_MS: z.coerce.number().int().positive().default(25000),
+  GEMINI_MODEL: z.string().min(1).default("gemini-3.5-flash-lite"),
+  GEMINI_TIMEOUT_MS: z.coerce.number().int().positive().default(45000),
 });
 
 const parsedEnv = EnvSchema.safeParse(process.env);

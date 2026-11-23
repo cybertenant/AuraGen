@@ -16,6 +16,7 @@ export type GenerationErrorCode =
   | "SCHEMA_VALIDATION_FAILED"
   | "INVALID_SESSION"
   | "INVALID_REQUEST"
+  | "CONTEXT_SANITIZATION_FAILED"
   | "PERSISTENCE_FAILED";
 
 export interface SanitizedCanonicalFieldMetadata {

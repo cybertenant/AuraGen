@@ -7,6 +7,7 @@ import {
   FrictionUpdatePayload,
   TelemetryAckPayload,
   AggregatedSignalsSchema,
+  FieldInteractionMetrics,
 } from "@auragen/shared";
 import { PersistenceService } from "../../services/persistence.service.js";
 import {
@@ -21,6 +22,9 @@ interface SessionFrictionContext {
   sessionId: string;
   engine: CognitiveFrictionEngine;
   lastEvaluation: CognitiveFrictionEvaluation | null;
+  lastFieldMetrics: FieldInteractionMetrics[];
+  lastBatchAtMs: number | null;
+  lastPreviousLayout: { title: string; stepCount: number } | null;
   lastPersistedAtMs: number;
   lastPersistedScore: number | null;
   lastPersistedLevel: FrictionLevel | null;
@@ -77,6 +81,9 @@ export class FrictionSessionService {
         sessionId,
         engine: new CognitiveFrictionEngine(),
         lastEvaluation: null,
+        lastFieldMetrics: [],
+        lastBatchAtMs: null,
+        lastPreviousLayout: null,
         lastPersistedAtMs: 0,
         lastPersistedScore: null,
         lastPersistedLevel: null,
@@ -94,6 +101,32 @@ export class FrictionSessionService {
     sessionId: string
   ): CognitiveFrictionEvaluation | null {
     return this.sessions.get(sessionId)?.lastEvaluation ?? null;
+  }
+
+  public getSessionTelemetryContext(sessionId: string): {
+    evaluation: CognitiveFrictionEvaluation | null;
+    fieldMetrics: FieldInteractionMetrics[];
+    lastBatchAtMs: number | null;
+    eligibilityReason?: string;
+    previousLayout: { title: string; stepCount: number } | null;
+  } {
+    const ctx = this.sessions.get(sessionId);
+    const adaptive = this.adaptiveOrchestrator.getSessionState(sessionId);
+    return {
+      evaluation: ctx?.lastEvaluation ?? null,
+      fieldMetrics: ctx?.lastFieldMetrics ?? [],
+      lastBatchAtMs: ctx?.lastBatchAtMs ?? null,
+      eligibilityReason: adaptive.state === "ADAPTATION_ELIGIBLE" ? "sustained_high_friction_eligible" : adaptive.state === "HIGH_FRICTION_CANDIDATE" ? "high_friction_candidate" : undefined,
+      previousLayout: ctx?.lastPreviousLayout ?? null,
+    };
+  }
+
+  public recordGeneratedLayoutMetadata(
+    sessionId: string,
+    layout: { title: string; stepCount: number }
+  ): void {
+    const ctx = this.ensureSessionContext(sessionId);
+    ctx.lastPreviousLayout = layout;
   }
 
   public resetSessionFriction(sessionId: string): void {
@@ -125,6 +158,10 @@ export class FrictionSessionService {
     // 1. Single authoritative scoring source: Day 4 CognitiveFrictionEngine
     const evaluation = ctx.engine.evaluate(batch, nowMs);
     ctx.lastEvaluation = evaluation;
+    ctx.lastBatchAtMs = nowMs;
+    if (batch.fieldMetrics && batch.fieldMetrics.length > 0) {
+      ctx.lastFieldMetrics = batch.fieldMetrics;
+    }
     ctx.updatedAtMs = nowMs;
 
     // 2. Day 6 Adaptive Friction Threshold Orchestration

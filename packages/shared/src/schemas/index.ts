@@ -213,6 +213,21 @@ export const TelemetrySignalSchema = z
   })
   .strict();
 
+export const FieldInteractionMetricsSchema = z
+  .object({
+    fieldId: z.string().min(1).max(120),
+    focusCount: z.number().int().nonnegative().default(0),
+    hesitationCount: z.number().int().nonnegative().default(0),
+    validationErrorCount: z.number().int().nonnegative().default(0),
+    repeatedInteractionCount: z.number().int().nonnegative().default(0),
+    totalFocusDurationMs: z.number().nonnegative().default(0),
+  })
+  .strict();
+
+export type FieldInteractionMetrics = z.infer<
+  typeof FieldInteractionMetricsSchema
+>;
+
 export const TelemetrySnapshotSchema = z
   .object({
     observationWindowSeconds: z
@@ -228,6 +243,7 @@ export const TelemetrySnapshotSchema = z
     repeatedClicks: z.number().int().nonnegative().default(0),
     backtracks: z.number().int().nonnegative().default(0),
     cursorAnomalyScore: z.number().min(0).max(1).default(0),
+    fieldMetrics: z.array(FieldInteractionMetricsSchema).optional(),
   })
   .strict();
 

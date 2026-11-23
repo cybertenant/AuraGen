@@ -20,6 +20,7 @@ import {
 import type {
   FinancialLoanApplication,
   ValidationErrorCategory,
+  FieldInteractionMetrics,
 } from "@auragen/shared";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -130,6 +131,7 @@ export interface FinancialLoanApplicationFormProps {
   adaptiveSchema?: AdaptiveUISchema | null;
   sessionId?: string | null;
   latestFrictionScore?: number;
+  fieldMetrics?: FieldInteractionMetrics[];
 }
 
 export function FinancialLoanApplicationForm({
@@ -141,6 +143,7 @@ export function FinancialLoanApplicationForm({
   adaptiveSchema = null,
   sessionId = null,
   latestFrictionScore = 0,
+  fieldMetrics = [],
 }: FinancialLoanApplicationFormProps) {
   const [currentStep, setCurrentStep] = useState<number>(1);
   const [submittedFinal, setSubmittedFinal] = useState<boolean>(false);
@@ -261,6 +264,8 @@ export function FinancialLoanApplicationForm({
       <AdaptivePreviewWorkbench
         sessionId={sessionId}
         latestFrictionScore={latestFrictionScore}
+        currentSectionId={currentSection.id}
+        fieldMetrics={fieldMetrics}
         externalAdaptiveSchema={adaptiveSchema}
         disabled={disabled}
         onSaveDraft={onSaveDraft}

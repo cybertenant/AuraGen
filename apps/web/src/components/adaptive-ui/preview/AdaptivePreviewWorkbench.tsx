@@ -11,10 +11,12 @@ import {
   Sparkles,
   Loader2,
   Database,
+  Activity,
 } from "lucide-react";
 import type {
   FinancialLoanApplication,
   ValidationErrorCategory,
+  FieldInteractionMetrics,
 } from "@auragen/shared";
 import { CANONICAL_FINANCIAL_LOAN_FORM } from "../canonical/canonical-loan-form";
 import {
@@ -34,6 +36,13 @@ export type PresentationGoalOption =
   | "conversational_guided"
   | "compact_executive";
 
+export type ContextualSimulationOption =
+  | ""
+  | "financial_information_friction"
+  | "employment_section_friction"
+  | "general_application_friction"
+  | "low_friction";
+
 export type GenerationUiStatus =
   | "Ready"
   | "Generating"
@@ -47,14 +56,27 @@ export type GenerationUiStatus =
 export interface GeneratedLayoutMetadata {
   model: string;
   providerType: string;
+  generationMode: "standard" | "contextual";
   generationTimeMs: number;
   persisted: boolean;
   persistenceError?: string | null;
+  contextSummary?: {
+    currentSection: string;
+    dominantFrictionArea: string;
+    frictionLevel: string;
+    smoothedScore: number;
+    source: string;
+    simulationScenarioId?: string;
+    highFrictionFieldIds: string[];
+  };
+  adaptationSummary?: string[];
 }
 
 export interface AdaptivePreviewWorkbenchProps {
   sessionId?: string | null;
   latestFrictionScore?: number;
+  currentSectionId?: string;
+  fieldMetrics?: FieldInteractionMetrics[];
   externalAdaptiveSchema: AdaptiveUISchema | null;
   onAdaptiveSchemaGenerated?: (schema: AdaptiveUISchema | null) => void;
   disabled?: boolean;
@@ -70,6 +92,8 @@ export interface AdaptivePreviewWorkbenchProps {
 export function AdaptivePreviewWorkbench({
   sessionId,
   latestFrictionScore = 0,
+  currentSectionId = "personal_information",
+  fieldMetrics = [],
   externalAdaptiveSchema,
   onAdaptiveSchemaGenerated,
   disabled = false,
@@ -88,6 +112,11 @@ export function AdaptivePreviewWorkbench({
   const [activeSource, setActiveSource] = useState<"fixture" | "ai">("fixture");
   const [aiGeneratedSchema, setAiGeneratedSchema] =
     useState<AdaptiveUISchema | null>(null);
+  const [generationMode, setGenerationMode] = useState<
+    "contextual" | "standard"
+  >("contextual");
+  const [simulationScenario, setSimulationScenario] =
+    useState<ContextualSimulationOption>("");
   const [presentationGoal, setPresentationGoal] =
     useState<PresentationGoalOption>("simplify_cognitive_load");
   const [generationStatus, setGenerationStatus] =
@@ -135,6 +164,19 @@ export function AdaptivePreviewWorkbench({
     [activeCandidateSchema]
   );
 
+  const computeCompletedFieldIds = (): string[] => {
+    if (!formContext) return [];
+    const values = formContext.getValues();
+    return CANONICAL_FINANCIAL_LOAN_FORM.fields
+      .filter((f) => {
+        const val = values[f.fieldId];
+        if (typeof val === "boolean") return val === true;
+        if (typeof val === "number") return !Number.isNaN(val);
+        return typeof val === "string" && val.trim().length > 0;
+      })
+      .map((f) => f.fieldId);
+  };
+
   const handleGenerateAdaptiveLayout = async () => {
     if (!sessionId) {
       setGenerationStatus("Failed");
@@ -146,14 +188,28 @@ export function AdaptivePreviewWorkbench({
     setGenerationError(null);
 
     try {
+      const payload: Record<string, unknown> = {
+        sessionId,
+        generationMode,
+        presentationGoal,
+        triggerScore: latestFrictionScore,
+      };
+
+      if (generationMode === "contextual") {
+        payload.formContext = {
+          currentSectionId,
+          completedFieldIds: computeCompletedFieldIds(),
+          ...(fieldMetrics.length > 0 ? { fieldMetrics } : {}),
+        };
+        if (simulationScenario) {
+          payload.simulationScenario = simulationScenario;
+        }
+      }
+
       const res = await fetch(`${API_BASE}/api/adaptations/generate`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          sessionId,
-          presentationGoal,
-          triggerScore: latestFrictionScore,
-        }),
+        body: JSON.stringify(payload),
       });
 
       const data = await res.json();
@@ -204,11 +260,17 @@ export function AdaptivePreviewWorkbench({
       setActiveSource("ai");
       setPreviewAdaptiveMode(true);
       setGenerationMeta({
-        model: String(data.model ?? "gemini-2.5-flash"),
+        model: String(data.model ?? "gemini-3.5-flash-lite"),
         providerType: String(data.providerType ?? "gemini_live"),
+        generationMode:
+          data.generationMode === "contextual" ? "contextual" : "standard",
         generationTimeMs: Number(data.generationTimeMs ?? 0),
         persisted: Boolean(data.persisted),
         persistenceError: data.persistenceError ?? null,
+        contextSummary: data.contextSummary,
+        adaptationSummary: Array.isArray(data.adaptationSummary)
+          ? data.adaptationSummary
+          : undefined,
       });
 
       setGenerationStatus(
@@ -240,8 +302,8 @@ export function AdaptivePreviewWorkbench({
             <div className="flex items-center gap-2">
               <FlaskConical className="h-4 w-4 text-emerald-400" />
               <span className="text-xs font-semibold text-white">
-                Adaptive UI Studio (Day 7 Fixtures & Day 8 Gemini LangChain
-                Generator)
+                Adaptive UI Studio (Day 7 Fixtures, Day 8 Gemini & Day 9
+                Context-Aware Generator)
               </span>
             </div>
 
@@ -282,55 +344,140 @@ export function AdaptivePreviewWorkbench({
             </div>
           </div>
 
-          {/* Day 8: Controlled AI Adaptive Layout Generation Bar */}
-          <div className="rounded-lg border border-emerald-500/20 bg-slate-900/70 p-3 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-            <div className="space-y-1">
-              <div className="text-xs font-medium text-emerald-300 flex items-center gap-1.5">
-                <Sparkles className="h-3.5 w-3.5" />
-                <span>Gemini + LangChain Adaptive Layout Generator</span>
-              </div>
-              <p className="text-[11px] text-slate-400">
-                Sends sanitized field metadata only (zero PII or financial
-                values) to generate a validated wizard schema.
-              </p>
+          {/* Day 9: Live & Simulated Interaction Context Summary Bar */}
+          <div
+            data-testid="contextual-telemetry-inspector"
+            className="rounded-lg border border-slate-800 bg-slate-900/50 px-3 py-2 flex flex-wrap items-center justify-between gap-2 text-[11px] text-slate-300"
+          >
+            <div className="flex flex-wrap items-center gap-3">
+              <span className="inline-flex items-center gap-1 text-emerald-300 font-medium">
+                <Activity className="h-3.5 w-3.5" />
+                Context Source:{" "}
+                <strong>
+                  {simulationScenario
+                    ? `Simulated (${simulationScenario})`
+                    : "Live Session Telemetry"}
+                </strong>
+              </span>
+              <span>
+                Current Section:{" "}
+                <strong className="text-white">{currentSectionId}</strong>
+              </span>
+              <span>
+                Session Friction:{" "}
+                <strong className="text-white">
+                  {Math.round(latestFrictionScore)}/100
+                </strong>
+              </span>
+              <span>
+                Tracked Field Signals:{" "}
+                <strong className="text-white">{fieldMetrics.length}</strong>
+              </span>
             </div>
+          </div>
 
-            <div className="flex flex-wrap items-center gap-2">
-              <select
-                aria-label="Presentation Goal"
-                value={presentationGoal}
-                onChange={(e) =>
-                  setPresentationGoal(e.target.value as PresentationGoalOption)
-                }
-                disabled={isGenerating}
-                data-testid="presentation-goal-select"
-                className="rounded-lg border border-slate-700 bg-slate-950 px-2.5 py-1.5 text-xs text-slate-200"
-              >
-                <option value="simplify_cognitive_load">
-                  Simplify Cognitive Load
-                </option>
-                <option value="conversational_guided">
-                  Conversational Guided Flow
-                </option>
-                <option value="compact_executive">
-                  Compact Executive Layout
-                </option>
-              </select>
+          {/* Day 8/9: Controlled AI Adaptive Layout Generation Bar */}
+          <div className="rounded-lg border border-emerald-500/20 bg-slate-900/70 p-3 flex flex-col gap-3">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+              <div className="space-y-0.5">
+                <div className="text-xs font-medium text-emerald-300 flex items-center gap-1.5">
+                  <Sparkles className="h-3.5 w-3.5" />
+                  <span>
+                    Context-Aware Gemini + LangChain Layout Generator
+                  </span>
+                </div>
+                <p className="text-[11px] text-slate-400">
+                  Combines sanitized canonical metadata with friction signals
+                  (zero PII or form values) to simplify high-friction steps.
+                </p>
+              </div>
 
-              <Button
-                type="button"
-                size="sm"
-                disabled={isGenerating || disabled}
-                onClick={() => void handleGenerateAdaptiveLayout()}
-                data-testid="generate-adaptive-layout-btn"
-              >
-                {isGenerating ? (
-                  <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
-                ) : (
-                  <Sparkles className="mr-1.5 h-3.5 w-3.5" />
+              <div className="flex flex-wrap items-center gap-2">
+                <select
+                  aria-label="Generation Mode"
+                  value={generationMode}
+                  onChange={(e) =>
+                    setGenerationMode(
+                      e.target.value as "contextual" | "standard"
+                    )
+                  }
+                  disabled={isGenerating}
+                  data-testid="generation-mode-select"
+                  className="rounded-lg border border-slate-700 bg-slate-950 px-2.5 py-1.5 text-xs text-slate-200"
+                >
+                  <option value="contextual">
+                    Mode: Contextual (Friction-Aware)
+                  </option>
+                  <option value="standard">Mode: Standard Baseline</option>
+                </select>
+
+                {generationMode === "contextual" && (
+                  <select
+                    aria-label="Contextual Scenario Simulator"
+                    value={simulationScenario}
+                    onChange={(e) =>
+                      setSimulationScenario(
+                        e.target.value as ContextualSimulationOption
+                      )
+                    }
+                    disabled={isGenerating}
+                    data-testid="contextual-scenario-select"
+                    className="rounded-lg border border-slate-700 bg-slate-950 px-2.5 py-1.5 text-xs text-slate-200"
+                  >
+                    <option value="">Use Live Session Context</option>
+                    <option value="financial_information_friction">
+                      Sim 1: Financial Info Friction
+                    </option>
+                    <option value="employment_section_friction">
+                      Sim 2: Employment Section Friction
+                    </option>
+                    <option value="general_application_friction">
+                      Sim 3: General Multi-Section Friction
+                    </option>
+                    <option value="low_friction">
+                      Sim 4: Low Friction Baseline
+                    </option>
+                  </select>
                 )}
-                {isGenerating ? generationStatus : "Generate Adaptive Layout"}
-              </Button>
+
+                <select
+                  aria-label="Presentation Goal"
+                  value={presentationGoal}
+                  onChange={(e) =>
+                    setPresentationGoal(
+                      e.target.value as PresentationGoalOption
+                    )
+                  }
+                  disabled={isGenerating}
+                  data-testid="presentation-goal-select"
+                  className="rounded-lg border border-slate-700 bg-slate-950 px-2.5 py-1.5 text-xs text-slate-200"
+                >
+                  <option value="simplify_cognitive_load">
+                    Simplify Cognitive Load
+                  </option>
+                  <option value="conversational_guided">
+                    Conversational Guided Flow
+                  </option>
+                  <option value="compact_executive">
+                    Compact Executive Layout
+                  </option>
+                </select>
+
+                <Button
+                  type="button"
+                  size="sm"
+                  disabled={isGenerating || disabled}
+                  onClick={() => void handleGenerateAdaptiveLayout()}
+                  data-testid="generate-adaptive-layout-btn"
+                >
+                  {isGenerating ? (
+                    <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
+                  ) : (
+                    <Sparkles className="mr-1.5 h-3.5 w-3.5" />
+                  )}
+                  {isGenerating ? generationStatus : "Generate Adaptive Layout"}
+                </Button>
+              </div>
             </div>
           </div>
 
@@ -347,31 +494,64 @@ export function AdaptivePreviewWorkbench({
           {generationMeta && (
             <div
               data-testid="ai-generation-metadata-bar"
-              className="flex flex-wrap items-center gap-3 rounded-lg border border-slate-800 bg-slate-900/60 px-3 py-2 text-[11px] text-slate-300"
+              className="rounded-lg border border-slate-800 bg-slate-900/60 px-3 py-2.5 space-y-2 text-[11px] text-slate-300"
             >
-              <span>
-                Model: <strong className="text-white">{generationMeta.model}</strong>{" "}
-                ({generationMeta.providerType})
-              </span>
-              <span>
-                Latency:{" "}
-                <strong className="text-white">
-                  {generationMeta.generationTimeMs} ms
-                </strong>
-              </span>
-              <span className="inline-flex items-center gap-1">
-                <Database className="h-3 w-3 text-emerald-400" />
-                Neon Persistence:{" "}
-                <strong
-                  className={
-                    generationMeta.persisted
-                      ? "text-emerald-400"
-                      : "text-amber-400"
-                  }
-                >
-                  {generationMeta.persisted ? "Saved (validated)" : "Not Saved"}
-                </strong>
-              </span>
+              <div className="flex flex-wrap items-center gap-3">
+                <span>
+                  Model:{" "}
+                  <strong className="text-white">{generationMeta.model}</strong>{" "}
+                  ({generationMeta.providerType})
+                </span>
+                <span>
+                  Mode:{" "}
+                  <strong className="text-emerald-300">
+                    {generationMeta.generationMode}
+                  </strong>
+                </span>
+                <span>
+                  Latency:{" "}
+                  <strong className="text-white">
+                    {generationMeta.generationTimeMs} ms
+                  </strong>
+                </span>
+                {generationMeta.contextSummary && (
+                  <span>
+                    Dominant Friction Area:{" "}
+                    <strong
+                      className="text-amber-300"
+                      data-testid="dominant-friction-area-value"
+                    >
+                      {generationMeta.contextSummary.dominantFrictionArea}
+                    </strong>{" "}
+                    ({generationMeta.contextSummary.frictionLevel})
+                  </span>
+                )}
+                <span className="inline-flex items-center gap-1">
+                  <Database className="h-3 w-3 text-emerald-400" />
+                  Neon Persistence:{" "}
+                  <strong
+                    className={
+                      generationMeta.persisted
+                        ? "text-emerald-400"
+                        : "text-amber-400"
+                    }
+                  >
+                    {generationMeta.persisted ? "Saved (validated)" : "Not Saved"}
+                  </strong>
+                </span>
+              </div>
+
+              {generationMeta.adaptationSummary &&
+                generationMeta.adaptationSummary.length > 0 && (
+                  <ul
+                    data-testid="adaptation-summary-list"
+                    className="list-disc pl-4 space-y-0.5 text-slate-300"
+                  >
+                    {generationMeta.adaptationSummary.map((item, idx) => (
+                      <li key={idx}>{item}</li>
+                    ))}
+                  </ul>
+                )}
             </div>
           )}
 
@@ -469,7 +649,7 @@ export function AdaptivePreviewWorkbench({
         <AdaptiveUIRenderer
           key={
             activeSource === "ai" && effectiveAiSchema
-              ? `ai-${effectiveAiSchema.title}`
+              ? `ai-${effectiveAiSchema.title}-${effectiveAiSchema.steps.length}`
               : selectedFixtureId
           }
           schema={activeCandidateSchema}
