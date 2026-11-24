@@ -7,7 +7,6 @@ import {
   StructuredUIProvider,
 } from "../providers/gemini.provider.js";
 import { AdaptiveUIAgent } from "../agents/adaptive-ui.agent.js";
-import { validateGeneratedAdaptiveUI } from "../validators/generated-ui.validator.js";
 import { classifyProviderError } from "../errors/ai.errors.js";
 import {
   AdaptiveUIGenerationResult,
@@ -21,6 +20,11 @@ import {
 } from "../context/context.types.js";
 import { summarizeContextForResponse } from "../context/context-builder.js";
 import { sanitizeGenerationContext } from "../context/context-sanitizer.js";
+import {
+  runAIOutputSecurityGuard,
+  formatPublicRejectionSummary,
+  AISecurityViolation,
+} from "../security/index.js";
 
 export interface GenerateAdaptiveUIParams {
   formDefinition?: unknown;
@@ -34,6 +38,7 @@ export interface ContextualAdaptiveUIGenerationResult
   generationMode: "standard" | "contextual";
   contextSummary?: ContextSummaryOutput;
   adaptationSummary?: string[];
+  securityViolations?: AISecurityViolation[];
 }
 
 function buildObservableAdaptationSummary(
@@ -79,7 +84,7 @@ function buildObservableAdaptationSummary(
 
 export async function generateAdaptiveUI(
   params: GenerateAdaptiveUIParams = {}
-): Promise<AdaptiveUIGenerationResult> {
+): Promise<AdaptiveUIGenerationResult & { securityViolations?: AISecurityViolation[] }> {
   const startMs = Date.now();
   const goal: PresentationGoal =
     params.presentationGoal ?? "simplify_cognitive_load";
@@ -100,14 +105,14 @@ export async function generateAdaptiveUI(
       presentationGoal: goal,
     });
 
-    const validation = validateGeneratedAdaptiveUI(
-      agentResult.rawCandidateSchema,
-      sanitizedMetadata
-    );
+    const guardResult = runAIOutputSecurityGuard({
+      rawOutput: agentResult.rawCandidateSchema,
+      canonicalFormDefinition: sanitizedMetadata,
+    });
 
     const generationTimeMs = Math.max(1, Date.now() - startMs);
 
-    if (!validation.valid || !validation.schema) {
+    if (!guardResult.success || !guardResult.schema) {
       return {
         success: false,
         providerType: agentResult.providerType,
@@ -115,10 +120,14 @@ export async function generateAdaptiveUI(
         generationTimeMs,
         validationStatus: "invalid",
         schema: null,
-        validationErrors: validation.errors,
+        validationErrors: guardResult.validationErrors.map((v) => ({
+          path: v.path,
+          code: v.code,
+          message: v.message,
+        })),
+        securityViolations: guardResult.validationErrors,
         errorCode: "SCHEMA_VALIDATION_FAILED",
-        errorMessage:
-          "Generated UI schema failed Day 7 structural or canonical field validation.",
+        errorMessage: formatPublicRejectionSummary(guardResult.validationErrors),
         tokenUsage: agentResult.tokenUsage,
       };
     }
@@ -129,7 +138,7 @@ export async function generateAdaptiveUI(
       model: agentResult.modelName,
       generationTimeMs,
       validationStatus: "valid",
-      schema: validation.schema,
+      schema: guardResult.schema as GeneratedAdaptiveUISchema,
       tokenUsage: agentResult.tokenUsage,
     };
   } catch (err) {
@@ -172,15 +181,15 @@ export async function generateContextualAdaptiveUI(params: {
       sanitizedContext: cleanContext,
     });
 
-    const validation = validateGeneratedAdaptiveUI(
-      agentResult.rawCandidateSchema,
-      cleanContext.formMetadata
-    );
+    const guardResult = runAIOutputSecurityGuard({
+      rawOutput: agentResult.rawCandidateSchema,
+      canonicalFormDefinition: cleanContext.formMetadata,
+    });
 
     const generationTimeMs = Math.max(1, Date.now() - startMs);
     const contextSummary = summarizeContextForResponse(cleanContext);
 
-    if (!validation.valid || !validation.schema) {
+    if (!guardResult.success || !guardResult.schema) {
       return {
         success: false,
         generationMode: "contextual",
@@ -190,13 +199,19 @@ export async function generateContextualAdaptiveUI(params: {
         generationTimeMs,
         validationStatus: "invalid",
         schema: null,
-        validationErrors: validation.errors,
+        validationErrors: guardResult.validationErrors.map((v) => ({
+          path: v.path,
+          code: v.code,
+          message: v.message,
+        })),
+        securityViolations: guardResult.validationErrors,
         errorCode: "SCHEMA_VALIDATION_FAILED",
-        errorMessage:
-          "Contextual UI schema failed Day 7 structural or canonical field validation.",
+        errorMessage: formatPublicRejectionSummary(guardResult.validationErrors),
         tokenUsage: agentResult.tokenUsage,
       };
     }
+
+    const validatedSchema = guardResult.schema as GeneratedAdaptiveUISchema;
 
     return {
       success: true,
@@ -205,12 +220,12 @@ export async function generateContextualAdaptiveUI(params: {
       model: agentResult.modelName,
       contextSummary,
       adaptationSummary: buildObservableAdaptationSummary(
-        validation.schema,
+        validatedSchema,
         cleanContext
       ),
       generationTimeMs,
       validationStatus: "valid",
-      schema: validation.schema,
+      schema: validatedSchema,
       tokenUsage: agentResult.tokenUsage,
     };
   } catch (err) {
