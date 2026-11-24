@@ -10,12 +10,14 @@ export default function EmploymentInformation({
   onChange,
   onBlur,
   adaptiveGuidance,
+  frictionGuidance,
 }) {
   const shared = {
     section: "employment",
     onChange,
     onBlur,
     adaptiveGuidance,
+    frictionGuidance,
   };
 
   const isStudent = data.employmentType === "Student";

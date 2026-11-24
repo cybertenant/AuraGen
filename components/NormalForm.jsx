@@ -17,6 +17,8 @@ import useCognitiveLoad from "@/hooks/useCognitiveLoad";
 import useAdaptiveUI from "@/hooks/useAdaptiveUI";
 import useErrorTracking from "@/hooks/useErrorTracking";
 import useFrictionAnalysis from "@/hooks/useFrictionAnalysis";
+import useFrictionGuidance from "@/hooks/useFrictionGuidance";
+
 
 const SHORT_LABELS = {
   personal: "Personal",
@@ -110,6 +112,9 @@ export default function NormalForm() {
   // Day 12: User friction pattern analysis
   const frictionAnalysis = useFrictionAnalysis(fieldData, errorData);
 
+  // Day 13: Friction-based adaptive guidance
+  const frictionGuidance = useFrictionGuidance(frictionAnalysis, fieldData);
+
   const { formData, errors, currentSection, submission } = app;
 
   if (submission) {
@@ -144,6 +149,7 @@ export default function NormalForm() {
     onChange: (name, value) => app.updateField(currentSection, name, value),
     onBlur: (name) => app.blurField(currentSection, name),
     adaptiveGuidance: adaptiveUI,
+    frictionGuidance: frictionGuidance,
   };
 
   let body = null;
@@ -169,6 +175,7 @@ export default function NormalForm() {
           onSelect={app.setDocument}
           onRemove={app.removeDocument}
           adaptiveGuidance={adaptiveUI}
+          frictionGuidance={frictionGuidance}
         />
       );
       break;
@@ -276,10 +283,10 @@ export default function NormalForm() {
             <div className="mt-4 h-3 overflow-hidden rounded-full bg-slate-200">
               <div
                 className={`h-full rounded-full transition-all duration-300 ${cognitiveLoad.level === "High"
-                    ? "bg-red-500"
-                    : cognitiveLoad.level === "Moderate"
-                      ? "bg-amber-500"
-                      : "bg-emerald-500"
+                  ? "bg-red-500"
+                  : cognitiveLoad.level === "Moderate"
+                    ? "bg-amber-500"
+                    : "bg-emerald-500"
                   }`}
                 style={{ width: `${cognitiveLoad.score}%` }}
               />

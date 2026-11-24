@@ -10,12 +10,14 @@ export default function FinancialInformation({
   onChange,
   onBlur,
   adaptiveGuidance,
+  frictionGuidance,
 }) {
   const shared = {
     section: "financial",
     onChange,
     onBlur,
     adaptiveGuidance,
+    frictionGuidance,
   };
 
   const money = {

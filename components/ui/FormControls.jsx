@@ -1,7 +1,7 @@
 
 "use client";
 
-import { AlertCircle, Lightbulb } from "lucide-react";
+import { AlertCircle, Lightbulb, AlertTriangle } from "lucide-react";
 
 const baseInput =
   "w-full rounded-lg border bg-white px-3.5 text-slate-900 placeholder:text-slate-400 shadow-sm transition-all focus:outline-none";
@@ -37,6 +37,7 @@ export function FieldShell({
   error,
   hint,
   adaptiveMessage,
+  frictionMessage,
   adaptiveLevel,
   children,
 }) {
@@ -44,6 +45,7 @@ export function FieldShell({
     error ? `${id}-error` : null,
     hint && !error ? `${id}-hint` : null,
     adaptiveMessage ? `${id}-adaptive` : null,
+    frictionMessage ? `${id}-friction` : null,
   ]
     .filter(Boolean)
     .join(" ") || undefined;
@@ -88,6 +90,19 @@ export function FieldShell({
         </p>
       ) : null}
 
+      {frictionMessage ? (
+        <p
+          id={`${id}-friction`}
+          className="mt-2 flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs leading-5 text-amber-800"
+        >
+          <AlertTriangle
+            className="mt-0.5 h-4 w-4 shrink-0"
+            aria-hidden="true"
+          />
+          <span>{frictionMessage}</span>
+        </p>
+      ) : null}
+
       {error ? (
         <p
           id={`${id}-error`}
@@ -117,6 +132,18 @@ function getAdaptiveMessage(adaptiveGuidance, section, name) {
   return "";
 }
 
+function getFrictionMessage(frictionGuidance, section, name) {
+  if (
+    frictionGuidance?.section === section &&
+    frictionGuidance?.field === name &&
+    frictionGuidance?.message
+  ) {
+    return frictionGuidance.message;
+  }
+
+  return "";
+}
+
 export function TextField({
   section,
   name,
@@ -130,12 +157,20 @@ export function TextField({
   onChange,
   onBlur,
   adaptiveGuidance,
+  frictionGuidance,
   ...rest
 }) {
   const id = `${section}-${name}`;
   const adaptiveLevel = adaptiveGuidance?.level || "low";
+
   const adaptiveMessage = getAdaptiveMessage(
     adaptiveGuidance,
+    section,
+    name
+  );
+
+  const frictionMessage = getFrictionMessage(
+    frictionGuidance,
     section,
     name
   );
@@ -148,6 +183,7 @@ export function TextField({
       error={error}
       hint={hint}
       adaptiveMessage={adaptiveMessage}
+      frictionMessage={frictionMessage}
       adaptiveLevel={adaptiveLevel}
     >
       {(describedBy) => (
@@ -192,11 +228,19 @@ export function SelectField({
   onChange,
   onBlur,
   adaptiveGuidance,
+  frictionGuidance,
 }) {
   const id = `${section}-${name}`;
   const adaptiveLevel = adaptiveGuidance?.level || "low";
+
   const adaptiveMessage = getAdaptiveMessage(
     adaptiveGuidance,
+    section,
+    name
+  );
+
+  const frictionMessage = getFrictionMessage(
+    frictionGuidance,
     section,
     name
   );
@@ -209,6 +253,7 @@ export function SelectField({
       error={error}
       hint={hint}
       adaptiveMessage={adaptiveMessage}
+      frictionMessage={frictionMessage}
       adaptiveLevel={adaptiveLevel}
     >
       {(describedBy) => (
@@ -248,12 +293,20 @@ export function TextAreaField({
   onChange,
   onBlur,
   adaptiveGuidance,
+  frictionGuidance,
   ...rest
 }) {
   const id = `${section}-${name}`;
   const adaptiveLevel = adaptiveGuidance?.level || "low";
+
   const adaptiveMessage = getAdaptiveMessage(
     adaptiveGuidance,
+    section,
+    name
+  );
+
+  const frictionMessage = getFrictionMessage(
+    frictionGuidance,
     section,
     name
   );
@@ -266,6 +319,7 @@ export function TextAreaField({
       error={error}
       hint={hint}
       adaptiveMessage={adaptiveMessage}
+      frictionMessage={frictionMessage}
       adaptiveLevel={adaptiveLevel}
     >
       {(describedBy) => (

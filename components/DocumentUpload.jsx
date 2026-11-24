@@ -8,6 +8,7 @@ import {
   Trash2,
   UploadCloud,
   Lightbulb,
+  AlertTriangle,
 } from "lucide-react";
 
 import { FIELDS } from "@/lib/fields";
@@ -26,6 +27,7 @@ function UploadSlot({
   onSelect,
   onRemove,
   adaptiveGuidance,
+  frictionGuidance,
 }) {
   const id = `documents-${field.name}`;
 
@@ -34,6 +36,13 @@ function UploadSlot({
       adaptiveGuidance?.field === field.name &&
       adaptiveGuidance?.isAdaptive
       ? adaptiveGuidance.message
+      : "";
+
+  const frictionMessage =
+    frictionGuidance?.section === "documents" &&
+      frictionGuidance?.field === field.name &&
+      frictionGuidance?.isFriction
+      ? frictionGuidance.message
       : "";
 
   const handleChange = (event) => {
@@ -130,6 +139,16 @@ function UploadSlot({
         </p>
       ) : null}
 
+      {frictionMessage ? (
+        <p className="mt-2 flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs leading-5 text-amber-800">
+          <AlertTriangle
+            className="mt-0.5 h-4 w-4 shrink-0"
+            aria-hidden="true"
+          />
+          <span>{frictionMessage}</span>
+        </p>
+      ) : null}
+
       {error ? (
         <p
           role="alert"
@@ -152,6 +171,7 @@ export default function DocumentUpload({
   onSelect,
   onRemove,
   adaptiveGuidance,
+  frictionGuidance,
 }) {
   return (
     <div className="space-y-5" data-section-root="documents">
@@ -164,6 +184,7 @@ export default function DocumentUpload({
           onSelect={onSelect}
           onRemove={onRemove}
           adaptiveGuidance={adaptiveGuidance}
+          frictionGuidance={frictionGuidance}
         />
       ))}
 

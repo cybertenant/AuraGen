@@ -11,12 +11,14 @@ export default function PersonalInformation({
   onChange,
   onBlur,
   adaptiveGuidance,
+  frictionGuidance,
 }) {
   const shared = {
     section: "personal",
     onChange,
     onBlur,
     adaptiveGuidance,
+    frictionGuidance,
   };
 
   return (
@@ -88,4 +90,3 @@ export default function PersonalInformation({
     </div>
   );
 }
-
