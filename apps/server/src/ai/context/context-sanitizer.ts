@@ -10,9 +10,37 @@ const PROMPT_INJECTION_PATTERN =
  * aggregated telemetry properties—guaranteeing PII, form values, DOM HTML, and
  * prompt injection strings never enter Gemini prompts.
  */
+const PROMPT_INJECTION_PATTERNS: readonly RegExp[] = [
+  /ignore\s+(?:all\s+)?(?:previous\s+)?instructions/i,
+  /system\s+override/i,
+  /reveal\s+(?:the\s+)?(?:api\s+key|credentials|secrets|env)/i,
+  /output\s+raw\s+(?:database|credentials|env)/i,
+  /disregard\s+(?:all\s+)?(?:prior\s+)?rules/i,
+  /you\s+are\s+now\s+(?:in\s+)?developer\s+mode/i,
+];
+
+function assertNoPromptInjection(value: unknown, path = "$"): void {
+  if (typeof value === "string") {
+    if (PROMPT_INJECTION_PATTERNS.some((p) => p.test(value))) {
+      throw new Error(`Context sanitization failed: prompt injection pattern detected at ${path}`);
+    }
+    return;
+  }
+  if (Array.isArray(value)) {
+    value.forEach((item, idx) => assertNoPromptInjection(item, `${path}[${idx}]`));
+    return;
+  }
+  if (value && typeof value === "object") {
+    for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
+      assertNoPromptInjection(v, `${path}.${k}`);
+    }
+  }
+}
 export function sanitizeGenerationContext(
   ctx: SanitizedGenerationContext
 ): SanitizedGenerationContext {
+  assertNoPromptInjection(
+  ctx);
   const canonicalIds = new Set(ctx.formMetadata.fields.map((f) => f.fieldId));
   const validSectionIds = new Set(
     ctx.formMetadata.fields.map((f) => f.originalSectionId)
