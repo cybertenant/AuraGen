@@ -4,9 +4,10 @@
 import { AlertCircle, Lightbulb, AlertTriangle } from "lucide-react";
 
 const baseInput =
-  "w-full rounded-lg border bg-white px-3.5 text-slate-900 placeholder:text-slate-400 shadow-sm transition-all focus:outline-none";
+  "w-full rounded-lg border px-3.5 text-slate-900 placeholder:text-slate-400 shadow-sm transition-all focus:outline-none";
 
-const inputClass = (error, adaptiveLevel) => {
+const inputClass = (error, adaptiveLevel, frictionLevel) => {
+  // Day 7–9: Cognitive-load-based field sizing
   const sizeClass =
     adaptiveLevel === "high"
       ? "py-3.5 text-base"
@@ -14,18 +15,43 @@ const inputClass = (error, adaptiveLevel) => {
         ? "py-3 text-sm"
         : "py-2.5 text-sm";
 
-  const borderClass = error
-    ? "border-red-400 bg-red-50/40"
-    : adaptiveLevel === "high"
-      ? "border-2 border-slate-400 hover:border-slate-600"
+  // Default: Low friction
+  let borderClass =
+    adaptiveLevel === "high"
+      ? "border-2 border-slate-400 bg-white hover:border-slate-600"
       : adaptiveLevel === "moderate"
-        ? "border-slate-400 hover:border-slate-500"
-        : "border-slate-300 hover:border-slate-400";
+        ? "border-slate-400 bg-white hover:border-slate-500"
+        : "border-slate-300 bg-white hover:border-slate-400";
 
-  const focusClass =
+  let focusClass =
     adaptiveLevel === "high"
       ? "focus:border-blue-600 focus:ring-4 focus:ring-blue-500/25"
       : "focus:border-blue-500 focus:ring-2 focus:ring-blue-500/25";
+
+  // Day 14: Moderate friction styling
+  if (frictionLevel === "Moderate") {
+    borderClass =
+      "border-amber-400 bg-amber-50/50 hover:border-amber-500";
+
+    focusClass =
+      "focus:border-amber-500 focus:ring-2 focus:ring-amber-400/30";
+  }
+
+  // Day 14: High friction styling
+  if (frictionLevel === "High") {
+    borderClass =
+      "border-2 border-amber-500 bg-amber-100/70 hover:border-amber-600";
+
+    focusClass =
+      "focus:border-amber-600 focus:ring-4 focus:ring-amber-500/30";
+  }
+
+  // Validation errors always take priority
+  if (error) {
+    borderClass = "border-red-400 bg-red-50/40";
+    focusClass =
+      "focus:border-red-500 focus:ring-2 focus:ring-red-500/25";
+  }
 
   return `${baseInput} ${sizeClass} ${borderClass} ${focusClass}`;
 };
@@ -39,25 +65,36 @@ export function FieldShell({
   adaptiveMessage,
   frictionMessage,
   adaptiveLevel,
+  frictionLevel,
   children,
 }) {
-  const describedBy = [
-    error ? `${id}-error` : null,
-    hint && !error ? `${id}-hint` : null,
-    adaptiveMessage ? `${id}-adaptive` : null,
-    frictionMessage ? `${id}-friction` : null,
-  ]
-    .filter(Boolean)
-    .join(" ") || undefined;
+  const describedBy =
+    [
+      error ? `${id}-error` : null,
+      hint && !error ? `${id}-hint` : null,
+      adaptiveMessage ? `${id}-adaptive` : null,
+      frictionMessage ? `${id}-friction` : null,
+    ]
+      .filter(Boolean)
+      .join(" ") || undefined;
+
+  // Day 14: Highlight the complete field container
+  const frictionContainer =
+    !error && frictionLevel === "High"
+      ? "rounded-xl border-2 border-amber-300 bg-amber-50/50 p-3"
+      : !error && frictionLevel === "Moderate"
+        ? "rounded-xl border border-amber-200 bg-amber-50/30 p-2"
+        : "";
 
   return (
-    <div>
+    <div className={frictionContainer}>
       <label
         htmlFor={id}
         className={`mb-1.5 block font-medium text-slate-700 ${adaptiveLevel === "high" ? "text-base" : "text-sm"
           }`}
       >
         {label}
+
         {required ? (
           <span className="ml-0.5 text-red-500" aria-hidden="true">
             *
@@ -144,6 +181,18 @@ function getFrictionMessage(frictionGuidance, section, name) {
   return "";
 }
 
+function getFrictionLevel(frictionGuidance, section, name) {
+  if (
+    frictionGuidance?.section === section &&
+    frictionGuidance?.field === name &&
+    frictionGuidance?.isFriction
+  ) {
+    return frictionGuidance.level;
+  }
+
+  return "Low";
+}
+
 export function TextField({
   section,
   name,
@@ -175,6 +224,12 @@ export function TextField({
     name
   );
 
+  const frictionLevel = getFrictionLevel(
+    frictionGuidance,
+    section,
+    name
+  );
+
   return (
     <FieldShell
       id={id}
@@ -185,6 +240,7 @@ export function TextField({
       adaptiveMessage={adaptiveMessage}
       frictionMessage={frictionMessage}
       adaptiveLevel={adaptiveLevel}
+      frictionLevel={frictionLevel}
     >
       {(describedBy) => (
         <div className="relative">
@@ -205,8 +261,11 @@ export function TextField({
             aria-describedby={describedBy}
             onChange={(e) => onChange(name, e.target.value)}
             onBlur={() => onBlur(name)}
-            className={`${inputClass(error, adaptiveLevel)} ${prefix ? "pl-8" : ""
-              }`}
+            className={`${inputClass(
+              error,
+              adaptiveLevel,
+              frictionLevel
+            )} ${prefix ? "pl-8" : ""}`}
             {...rest}
           />
         </div>
@@ -245,6 +304,12 @@ export function SelectField({
     name
   );
 
+  const frictionLevel = getFrictionLevel(
+    frictionGuidance,
+    section,
+    name
+  );
+
   return (
     <FieldShell
       id={id}
@@ -255,6 +320,7 @@ export function SelectField({
       adaptiveMessage={adaptiveMessage}
       frictionMessage={frictionMessage}
       adaptiveLevel={adaptiveLevel}
+      frictionLevel={frictionLevel}
     >
       {(describedBy) => (
         <select
@@ -267,9 +333,10 @@ export function SelectField({
           aria-describedby={describedBy}
           onChange={(e) => onChange(name, e.target.value)}
           onBlur={() => onBlur(name)}
-          className={inputClass(error, adaptiveLevel)}
+          className={inputClass(error, adaptiveLevel, frictionLevel)}
         >
           <option value="">{placeholder}</option>
+
           {options.map((option) => (
             <option key={option} value={option}>
               {option}
@@ -311,6 +378,12 @@ export function TextAreaField({
     name
   );
 
+  const frictionLevel = getFrictionLevel(
+    frictionGuidance,
+    section,
+    name
+  );
+
   return (
     <FieldShell
       id={id}
@@ -321,6 +394,7 @@ export function TextAreaField({
       adaptiveMessage={adaptiveMessage}
       frictionMessage={frictionMessage}
       adaptiveLevel={adaptiveLevel}
+      frictionLevel={frictionLevel}
     >
       {(describedBy) => (
         <textarea
@@ -334,7 +408,7 @@ export function TextAreaField({
           aria-describedby={describedBy}
           onChange={(e) => onChange(name, e.target.value)}
           onBlur={() => onBlur(name)}
-          className={inputClass(error, adaptiveLevel)}
+          className={inputClass(error, adaptiveLevel, frictionLevel)}
           {...rest}
         />
       )}
