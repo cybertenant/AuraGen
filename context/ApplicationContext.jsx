@@ -1,7 +1,16 @@
+
 "use client";
 
-import { createContext, useCallback, useContext, useMemo, useState } from "react";
+import {
+  createContext,
+  useCallback,
+  useContext,
+  useMemo,
+  useState,
+} from "react";
+
 import { FORM_SECTIONS, INITIAL_FORM_DATA } from "@/lib/fields";
+
 import {
   getOverallProgress,
   validateAll,
@@ -9,9 +18,6 @@ import {
   validateFile,
   validateSection,
 } from "@/lib/validation";
-
-// Central application state. Both the NormalForm and a future WizardForm
-// read and write through this context, so data survives a UI switch.
 
 const ApplicationContext = createContext(null);
 
@@ -23,9 +29,12 @@ export function ApplicationProvider({ children }) {
   const [formData, setFormData] = useState(INITIAL_FORM_DATA);
   const [errors, setErrors] = useState({});
   const [currentSection, setCurrentSection] = useState("dashboard");
-  const [submission, setSubmission] = useState(null); // { reference, submittedAt }
+  const [submission, setSubmission] = useState(null);
 
-  const progress = useMemo(() => getOverallProgress(formData), [formData]);
+  const progress = useMemo(
+    () => getOverallProgress(formData),
+    [formData]
+  );
 
   const status = useMemo(() => {
     if (submission) return "Submitted";
@@ -34,91 +43,149 @@ export function ApplicationProvider({ children }) {
     return "In progress";
   }, [submission, progress.percentage]);
 
-  const clearFieldError = (section, name) => {
+  const clearFieldError = useCallback((section, name) => {
     setErrors((prev) => {
       if (!prev[section] || !prev[section][name]) return prev;
+
       const next = { ...prev[section] };
       delete next[name];
+
       return { ...prev, [section]: next };
     });
-  };
+  }, []);
 
-  const setFieldError = (section, name, message) => {
+  const setFieldError = useCallback((section, name, message) => {
     setErrors((prev) => {
       const next = { ...(prev[section] || {}) };
+
       if (message) next[name] = message;
       else delete next[name];
+
       return { ...prev, [section]: next };
     });
-  };
-
-  const updateField = useCallback((section, name, value) => {
-    setFormData((prev) => ({ ...prev, [section]: { ...prev[section], [name]: value } }));
-    clearFieldError(section, name);
   }, []);
+
+  const updateField = useCallback(
+    (section, name, value) => {
+      setFormData((prev) => ({
+        ...prev,
+        [section]: {
+          ...prev[section],
+          [name]: value,
+        },
+      }));
+
+      clearFieldError(section, name);
+    },
+    [clearFieldError]
+  );
 
   const blurField = useCallback(
     (section, name) => {
-      setFieldError(section, name, validateField(section, name, formData));
+      setFieldError(
+        section,
+        name,
+        validateField(section, name, formData)
+      );
     },
-    [formData]
+    [formData, setFieldError]
   );
 
-  const setDocument = useCallback((key, file) => {
-    const message = validateFile(file);
-    if (message) {
-      setFieldError("documents", key, message);
-      return;
-    }
+  const setDocument = useCallback(
+    (key, file) => {
+      const message = validateFile(file);
+
+      if (message) {
+        setFieldError("documents", key, message);
+        return;
+      }
+
+      setFormData((prev) => ({
+        ...prev,
+        documents: {
+          ...prev.documents,
+          [key]: {
+            name: file.name,
+            size: file.size,
+            type: file.type,
+            file,
+          },
+        },
+      }));
+
+      clearFieldError("documents", key);
+    },
+    [setFieldError, clearFieldError]
+  );
+
+  const removeDocument = useCallback((key) => {
     setFormData((prev) => ({
       ...prev,
       documents: {
         ...prev.documents,
-        [key]: { name: file.name, size: file.size, type: file.type, file },
+        [key]: null,
       },
     }));
-    clearFieldError("documents", key);
-  }, []);
-
-  const removeDocument = useCallback((key) => {
-    setFormData((prev) => ({ ...prev, documents: { ...prev.documents, [key]: null } }));
   }, []);
 
   const goToSection = useCallback((section) => {
     setCurrentSection(section);
-    if (typeof window !== "undefined") window.scrollTo({ top: 0 });
+
+    if (typeof window !== "undefined") {
+      window.scrollTo({ top: 0 });
+    }
   }, []);
 
-  // Validates the current section before moving forward.
   const goNext = useCallback(() => {
     const sectionErrors = validateSection(currentSection, formData);
+
     if (Object.keys(sectionErrors).length > 0) {
-      setErrors((prev) => ({ ...prev, [currentSection]: sectionErrors }));
+      setErrors((prev) => ({
+        ...prev,
+        [currentSection]: sectionErrors,
+      }));
+
       return false;
     }
+
     const index = FORM_SECTIONS.indexOf(currentSection);
+
     if (index >= 0 && index < FORM_SECTIONS.length - 1) {
       goToSection(FORM_SECTIONS[index + 1]);
     }
+
     return true;
   }, [currentSection, formData, goToSection]);
 
   const goPrevious = useCallback(() => {
     const index = FORM_SECTIONS.indexOf(currentSection);
-    goToSection(index > 0 ? FORM_SECTIONS[index - 1] : "dashboard");
+
+    goToSection(
+      index > 0 ? FORM_SECTIONS[index - 1] : "dashboard"
+    );
   }, [currentSection, goToSection]);
 
-  // Validates every section. Jumps to the first invalid one if needed.
   const submitApplication = useCallback(() => {
     const allErrors = validateAll(formData);
-    const firstInvalid = FORM_SECTIONS.find((id) => allErrors[id]);
+
+    const firstInvalid = FORM_SECTIONS.find(
+      (id) => allErrors[id]
+    );
+
     if (firstInvalid) {
       setErrors(allErrors);
       goToSection(firstInvalid);
+
       return { ok: false, firstInvalid };
     }
-    setSubmission({ reference: makeReference(), submittedAt: new Date().toISOString() });
+
+    setSubmission({
+      reference: makeReference(),
+      submittedAt: new Date().toISOString(),
+    });
+
     setErrors({});
+
     return { ok: true };
   }, [formData, goToSection]);
 
@@ -129,29 +196,58 @@ export function ApplicationProvider({ children }) {
     goToSection("dashboard");
   }, [goToSection]);
 
-  const value = {
-    formData,
-    errors,
-    currentSection,
-    submission,
-    progress,
-    status,
-    updateField,
-    blurField,
-    setDocument,
-    removeDocument,
-    goToSection,
-    goNext,
-    goPrevious,
-    submitApplication,
-    resetApplication,
-  };
+  const value = useMemo(
+    () => ({
+      formData,
+      errors,
+      currentSection,
+      submission,
+      progress,
+      status,
+      updateField,
+      blurField,
+      setDocument,
+      removeDocument,
+      goToSection,
+      goNext,
+      goPrevious,
+      submitApplication,
+      resetApplication,
+    }),
+    [
+      formData,
+      errors,
+      currentSection,
+      submission,
+      progress,
+      status,
+      updateField,
+      blurField,
+      setDocument,
+      removeDocument,
+      goToSection,
+      goNext,
+      goPrevious,
+      submitApplication,
+      resetApplication,
+    ]
+  );
 
-  return <ApplicationContext.Provider value={value}>{children}</ApplicationContext.Provider>;
+  return (
+    <ApplicationContext.Provider value={value}>
+      {children}
+    </ApplicationContext.Provider>
+  );
 }
 
 export function useApplication() {
   const context = useContext(ApplicationContext);
-  if (!context) throw new Error("useApplication must be used inside ApplicationProvider");
+
+  if (!context) {
+    throw new Error(
+      "useApplication must be used inside ApplicationProvider"
+    );
+  }
+
   return context;
 }
