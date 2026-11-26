@@ -354,3 +354,4 @@ export const FinancialLoanApplicationSchema = z.object({
     message: "You must accept the synthetic underwriting terms to submit",
   }),
 });
+export * from "./day11-adaptation-events.schema.js";
