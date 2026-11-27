@@ -28,3 +28,8 @@ cp .env.example apps/web/.env.local
 
 # Install dependencies
 pnpm install
+```
+
+## Team member work
+
+- **Tejaswini** — [AuraGen standalone implementation (from scratch)](auragen-tejaswini/README.md): a complete pnpm monorepo with Next.js web app, Express/Socket.IO server, shared Zod contracts, and guardrail tests. See [the contribution notes](docs/TEJASWINI_CONTRIBUTIONS.md) for details.
