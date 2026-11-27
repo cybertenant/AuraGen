@@ -20,6 +20,7 @@ import {
 } from "@/lib/validation";
 
 const ApplicationContext = createContext(null);
+const NavigationContext = createContext(null);
 
 function makeReference() {
   return `AG-${Math.floor(100000 + Math.random() * 900000)}`;
@@ -233,9 +234,19 @@ export function ApplicationProvider({ children }) {
     ]
   );
 
+  const navigationValue = useMemo(
+    () => ({
+      currentSection,
+      goToSection,
+    }),
+    [currentSection, goToSection]
+  );
+
   return (
     <ApplicationContext.Provider value={value}>
-      {children}
+      <NavigationContext.Provider value={navigationValue}>
+        {children}
+      </NavigationContext.Provider>
     </ApplicationContext.Provider>
   );
 }
@@ -246,6 +257,18 @@ export function useApplication() {
   if (!context) {
     throw new Error(
       "useApplication must be used inside ApplicationProvider"
+    );
+  }
+
+  return context;
+}
+
+export function useNavigation() {
+  const context = useContext(NavigationContext);
+
+  if (!context) {
+    throw new Error(
+      "useNavigation must be used inside ApplicationProvider"
     );
   }
 
