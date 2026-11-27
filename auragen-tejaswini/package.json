@@ -1,0 +1,24 @@
+{
+  "name": "auragen-tejaswini",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "AuraGen - Self-Healing Generative UI via Cognitive Load (standalone implementation by Tejaswini)",
+  "engines": {
+    "node": ">=20.0.0",
+    "pnpm": ">=9.0.0"
+  },
+  "scripts": {
+    "dev": "pnpm --filter @tejaswini/shared build && pnpm --parallel --filter @tejaswini/server --filter @tejaswini/web dev",
+    "dev:web": "pnpm --filter @tejaswini/web dev",
+    "dev:server": "pnpm --filter @tejaswini/server dev",
+    "build": "pnpm --filter @tejaswini/shared build && pnpm --filter @tejaswini/server build && pnpm --filter @tejaswini/web build",
+    "typecheck": "pnpm --filter @tejaswini/shared build && pnpm -r typecheck",
+    "test": "pnpm --filter @tejaswini/shared build && pnpm -r test"
+  },
+  "devDependencies": {
+    "@types/node": "^20.14.10",
+    "typescript": "^5.5.3",
+    "vitest": "^2.0.3"
+  }
+}
