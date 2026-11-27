@@ -9,19 +9,21 @@ echo.
 
 where pnpm >nul 2>nul
 if errorlevel 1 (
-    echo Installing pnpm globally...
-    call npm install -g pnpm
+    echo pnpm not found - using Corepack instead.
+    set "PNPM=corepack pnpm@9"
+) else (
+    set "PNPM=pnpm"
 )
 
 if not exist node_modules (
     echo Installing project dependencies...
-    call pnpm install
+    %PNPM% install
 )
 
 echo.
 echo Starting server and web in separate windows...
-start "AuraGen Server" cmd /k "pnpm --filter @tejaswini/server dev"
-start "AuraGen Web" cmd /k "pnpm --filter @tejaswini/web dev"
+start "AuraGen Server" cmd /k "%PNPM% --filter @tejaswini/server dev"
+start "AuraGen Web" cmd /k "%PNPM% --filter @tejaswini/web dev"
 
 echo Waiting for the app to boot...
 timeout /t 12 /nobreak >nul
